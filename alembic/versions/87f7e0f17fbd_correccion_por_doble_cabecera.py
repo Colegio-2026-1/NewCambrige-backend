@@ -1,8 +1,8 @@
-"""initial_schema
+"""correccion por doble cabecera
 
-Revision ID: c489f95eca72
+Revision ID: 87f7e0f17fbd
 Revises: 
-Create Date: 2026-05-03 14:52:04.590846
+Create Date: 2026-05-28 20:49:32.772967
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = 'c489f95eca72'
+revision: str = '87f7e0f17fbd'
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -39,6 +39,15 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id_categoria')
     )
     op.create_index(op.f('ix_categoria_id_categoria'), 'categoria', ['id_categoria'], unique=False)
+    op.create_table('credenciales_login',
+    sa.Column('id_credencial', sa.Integer(), nullable=False),
+    sa.Column('url', sa.String(length=255), nullable=False),
+    sa.Column('nombre_usuario', sa.String(length=50), nullable=False),
+    sa.Column('password_hash', sa.String(length=255), nullable=False),
+    sa.Column('updated_at', sa.TIMESTAMP(timezone=True), server_default=sa.text('now()'), nullable=True),
+    sa.PrimaryKeyConstraint('id_credencial')
+    )
+    op.create_index(op.f('ix_credenciales_login_id_credencial'), 'credenciales_login', ['id_credencial'], unique=False)
     op.create_table('inventario_objeto',
     sa.Column('id_objeto', sa.Integer(), nullable=False),
     sa.Column('nombre', sa.String(length=100), nullable=False),
@@ -48,10 +57,21 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id_objeto')
     )
     op.create_index(op.f('ix_inventario_objeto_id_objeto'), 'inventario_objeto', ['id_objeto'], unique=False)
+    op.create_table('login_attempt',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('username', sa.String(length=100), nullable=False),
+    sa.Column('intentos', sa.Integer(), nullable=False),
+    sa.Column('bloqueado_hasta', sa.TIMESTAMP(), nullable=True),
+    sa.Column('ultimo_intento', sa.TIMESTAMP(), server_default=sa.text('now()'), nullable=False),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('username')
+    )
+    op.create_index(op.f('ix_login_attempt_id'), 'login_attempt', ['id'], unique=False)
     op.create_table('periodo_academico',
     sa.Column('id_periodo', sa.Integer(), nullable=False),
-    sa.Column('nombre', sa.String(length=50), nullable=False),
-    sa.Column('anio', sa.Integer(), nullable=False),
+    sa.Column('nombre', sa.String(length=4), nullable=False),
+    sa.Column('fecha_inicio', sa.TIMESTAMP(), nullable=False),
+    sa.Column('fecha_fin', sa.TIMESTAMP(), nullable=False),
     sa.Column('activo', sa.Boolean(), nullable=True),
     sa.PrimaryKeyConstraint('id_periodo')
     )
@@ -70,11 +90,19 @@ def upgrade() -> None:
     sa.UniqueConstraint('nombre')
     )
     op.create_index(op.f('ix_tipo_concepto_id_tipo'), 'tipo_concepto', ['id_tipo'], unique=False)
+    op.create_table('tipo_firma',
+    sa.Column('id_tipo_firma', sa.Integer(), nullable=False),
+    sa.Column('nombre', sa.String(length=50), nullable=False),
+    sa.PrimaryKeyConstraint('id_tipo_firma'),
+    sa.UniqueConstraint('nombre')
+    )
+    op.create_index(op.f('ix_tipo_firma_id_tipo_firma'), 'tipo_firma', ['id_tipo_firma'], unique=False)
     op.create_table('tipo_prueba',
     sa.Column('id_tipo_prueba', sa.Integer(), nullable=False),
     sa.Column('nombre', sa.String(length=100), nullable=False),
     sa.Column('grado_min', sa.Integer(), nullable=True),
     sa.Column('grado_max', sa.Integer(), nullable=True),
+    sa.Column('descripcion', sa.String(length=150), nullable=True),
     sa.PrimaryKeyConstraint('id_tipo_prueba')
     )
     op.create_index(op.f('ix_tipo_prueba_id_tipo_prueba'), 'tipo_prueba', ['id_tipo_prueba'], unique=False)
@@ -87,11 +115,10 @@ def upgrade() -> None:
     op.create_table('usuario',
     sa.Column('id_usuario', sa.Integer(), nullable=False),
     sa.Column('nombre', sa.String(length=100), nullable=False),
-    sa.Column('correo', sa.String(length=150), nullable=False),
+    sa.Column('estado', sa.Boolean(), nullable=False),
     sa.Column('contrasena', sa.String(length=255), nullable=False),
     sa.Column('created_at', sa.TIMESTAMP(timezone=True), server_default=sa.text('now()'), nullable=True),
-    sa.PrimaryKeyConstraint('id_usuario'),
-    sa.UniqueConstraint('correo')
+    sa.PrimaryKeyConstraint('id_usuario')
     )
     op.create_index(op.f('ix_usuario_id_usuario'), 'usuario', ['id_usuario'], unique=False)
     op.create_table('inventario_instrumento',
@@ -105,6 +132,14 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id_instrumento')
     )
     op.create_index(op.f('ix_inventario_instrumento_id_instrumento'), 'inventario_instrumento', ['id_instrumento'], unique=False)
+    op.create_table('responsable_firma',
+    sa.Column('id_responsable', sa.Integer(), nullable=False),
+    sa.Column('id_usuario', sa.Integer(), nullable=False),
+    sa.Column('ruta_firma', sa.String(length=255), nullable=True),
+    sa.ForeignKeyConstraint(['id_usuario'], ['usuario.id_usuario'], ),
+    sa.PrimaryKeyConstraint('id_responsable')
+    )
+    op.create_index(op.f('ix_responsable_firma_id_responsable'), 'responsable_firma', ['id_responsable'], unique=False)
     op.create_table('rol_usuario',
     sa.Column('id_rol', sa.Integer(), nullable=False),
     sa.Column('id_usuario', sa.Integer(), nullable=False),
@@ -125,17 +160,20 @@ def upgrade() -> None:
     op.create_index(op.f('ix_salon_id_salon'), 'salon', ['id_salon'], unique=False)
     op.create_table('sesion_usuario',
     sa.Column('id_sesion', sa.Integer(), nullable=False),
-    sa.Column('id_usuario', sa.Integer(), nullable=True),
-    sa.Column('token', sa.String(length=255), nullable=False),
-    sa.Column('fecha_inicio', sa.TIMESTAMP(), server_default=sa.text('now()'), nullable=True),
-    sa.Column('fecha_expiracion', sa.TIMESTAMP(), nullable=True),
-    sa.Column('activa', sa.Boolean(), nullable=True),
+    sa.Column('id_usuario', sa.Integer(), nullable=False),
+    sa.Column('token', sa.String(length=500), nullable=False),
+    sa.Column('fecha_inicio', sa.TIMESTAMP(), server_default=sa.text('now()'), nullable=False),
+    sa.Column('fecha_expiracion', sa.TIMESTAMP(), nullable=False),
+    sa.Column('ultima_actividad', sa.TIMESTAMP(), server_default=sa.text('now()'), nullable=False),
+    sa.Column('activa', sa.Boolean(), nullable=False),
     sa.ForeignKeyConstraint(['id_usuario'], ['usuario.id_usuario'], ondelete='CASCADE'),
-    sa.PrimaryKeyConstraint('id_sesion')
+    sa.PrimaryKeyConstraint('id_sesion'),
+    sa.UniqueConstraint('token')
     )
     op.create_index(op.f('ix_sesion_usuario_id_sesion'), 'sesion_usuario', ['id_sesion'], unique=False)
     op.create_table('estudiante',
     sa.Column('id_estudiante', sa.Integer(), nullable=False),
+    sa.Column('documento', sa.String(length=10), nullable=False),
     sa.Column('nombre', sa.String(length=100), nullable=False),
     sa.Column('telefono_acudiente', sa.String(length=20), nullable=True),
     sa.Column('id_salon', sa.Integer(), nullable=True),
@@ -149,8 +187,10 @@ def upgrade() -> None:
     sa.Column('id_libro', sa.Integer(), nullable=False),
     sa.Column('nombre', sa.String(length=150), nullable=False),
     sa.Column('autor', sa.String(length=100), nullable=False),
+    sa.Column('edicion', sa.String(length=50), nullable=True),
+    sa.Column('estado_fisico', sa.String(length=100), nullable=True),
     sa.Column('id_salon', sa.Integer(), nullable=True),
-    sa.Column('disponible', sa.Boolean(), nullable=True),
+    sa.Column('disponible', sa.Boolean(), nullable=False),
     sa.ForeignKeyConstraint(['id_salon'], ['salon.id_salon'], ),
     sa.PrimaryKeyConstraint('id_libro')
     )
@@ -163,13 +203,8 @@ def upgrade() -> None:
     )
     op.create_table('firmas_paz_y_salvo',
     sa.Column('id_firma', sa.Integer(), nullable=False),
-    sa.Column('id_estudiante', sa.Integer(), nullable=True),
-    sa.Column('id_periodo', sa.Integer(), nullable=True),
-    sa.Column('biblioteca', sa.Boolean(), nullable=True),
-    sa.Column('tesoreria', sa.Boolean(), nullable=True),
-    sa.Column('uniforme', sa.Boolean(), nullable=True),
-    sa.Column('salon', sa.Boolean(), nullable=True),
-    sa.Column('rectoria', sa.Boolean(), nullable=True),
+    sa.Column('id_estudiante', sa.Integer(), nullable=False),
+    sa.Column('id_periodo', sa.Integer(), nullable=False),
     sa.Column('updated_at', sa.TIMESTAMP(timezone=True), server_default=sa.text('now()'), nullable=True),
     sa.ForeignKeyConstraint(['id_estudiante'], ['estudiante.id_estudiante'], ),
     sa.ForeignKeyConstraint(['id_periodo'], ['periodo_academico.id_periodo'], ),
@@ -210,7 +245,7 @@ def upgrade() -> None:
     sa.Column('id_estudiante', sa.Integer(), nullable=True),
     sa.Column('fecha_prestamo', sa.Date(), nullable=True),
     sa.Column('fecha_devolucion', sa.Date(), nullable=True),
-    sa.Column('estado', sa.Boolean(), nullable=True),
+    sa.Column('estado', sa.String(length=20), nullable=False),
     sa.Column('created_at', sa.TIMESTAMP(timezone=True), server_default=sa.text('now()'), nullable=True),
     sa.Column('updated_at', sa.TIMESTAMP(timezone=True), server_default=sa.text('now()'), nullable=True),
     sa.ForeignKeyConstraint(['id_estudiante'], ['estudiante.id_estudiante'], ),
@@ -239,6 +274,7 @@ def upgrade() -> None:
     sa.Column('id_estudiante', sa.Integer(), nullable=True),
     sa.Column('id_tipo_prueba', sa.Integer(), nullable=True),
     sa.Column('estado', sa.String(length=20), nullable=True),
+    sa.Column('fecha_pago', sa.Date(), nullable=True),
     sa.Column('created_at', sa.TIMESTAMP(timezone=True), server_default=sa.text('now()'), nullable=True),
     sa.Column('updated_at', sa.TIMESTAMP(timezone=True), server_default=sa.text('now()'), nullable=True),
     sa.ForeignKeyConstraint(['id_estudiante'], ['estudiante.id_estudiante'], ),
@@ -250,17 +286,32 @@ def upgrade() -> None:
     sa.Column('id_mantenimiento', sa.Integer(), nullable=False),
     sa.Column('id_estudiante', sa.Integer(), nullable=True),
     sa.Column('estado', sa.String(length=20), nullable=True),
+    sa.Column('fecha_pago', sa.Date(), nullable=True),
     sa.Column('created_at', sa.TIMESTAMP(timezone=True), server_default=sa.text('now()'), nullable=True),
     sa.Column('updated_at', sa.TIMESTAMP(timezone=True), server_default=sa.text('now()'), nullable=True),
     sa.ForeignKeyConstraint(['id_estudiante'], ['estudiante.id_estudiante'], ),
     sa.PrimaryKeyConstraint('id_mantenimiento')
     )
     op.create_index(op.f('ix_pupitres_id_mantenimiento'), 'pupitres', ['id_mantenimiento'], unique=False)
+    op.create_table('detalle_firma_paz_y_salvo',
+    sa.Column('id_detalle', sa.Integer(), nullable=False),
+    sa.Column('id_firma', sa.Integer(), nullable=False),
+    sa.Column('id_tipo_firma', sa.Integer(), nullable=False),
+    sa.Column('id_usuario_firmante', sa.Integer(), nullable=True),
+    sa.Column('estado', sa.Boolean(), nullable=True),
+    sa.Column('observacion', sa.String(length=255), nullable=True),
+    sa.Column('fecha_firma', sa.TIMESTAMP(timezone=True), server_default=sa.text('now()'), nullable=True),
+    sa.ForeignKeyConstraint(['id_firma'], ['firmas_paz_y_salvo.id_firma'], ),
+    sa.ForeignKeyConstraint(['id_tipo_firma'], ['tipo_firma.id_tipo_firma'], ),
+    sa.ForeignKeyConstraint(['id_usuario_firmante'], ['usuario.id_usuario'], ),
+    sa.PrimaryKeyConstraint('id_detalle')
+    )
+    op.create_index(op.f('ix_detalle_firma_paz_y_salvo_id_detalle'), 'detalle_firma_paz_y_salvo', ['id_detalle'], unique=False)
     op.create_table('detalle_matricula',
     sa.Column('id_detalle', sa.Integer(), nullable=False),
     sa.Column('id_matricula', sa.Integer(), nullable=True),
     sa.Column('id_tipo', sa.Integer(), nullable=True),
-    sa.Column('descripcion', sa.String(length=100), nullable=True),
+    sa.Column('mes', sa.Enum('ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', name='mesesenum'), nullable=False),
     sa.Column('estado', sa.String(length=20), nullable=True),
     sa.Column('created_at', sa.TIMESTAMP(timezone=True), server_default=sa.text('now()'), nullable=True),
     sa.Column('updated_at', sa.TIMESTAMP(timezone=True), server_default=sa.text('now()'), nullable=True),
@@ -268,6 +319,7 @@ def upgrade() -> None:
     sa.ForeignKeyConstraint(['id_tipo'], ['tipo_concepto.id_tipo'], ),
     sa.PrimaryKeyConstraint('id_detalle')
     )
+    op.create_index(op.f('ix_detalle_matricula_estado'), 'detalle_matricula', ['estado'], unique=False)
     op.create_index(op.f('ix_detalle_matricula_id_detalle'), 'detalle_matricula', ['id_detalle'], unique=False)
     # ### end Alembic commands ###
 
@@ -276,7 +328,10 @@ def downgrade() -> None:
     """Downgrade schema."""
     # ### commands auto generated by Alembic - please adjust! ###
     op.drop_index(op.f('ix_detalle_matricula_id_detalle'), table_name='detalle_matricula')
+    op.drop_index(op.f('ix_detalle_matricula_estado'), table_name='detalle_matricula')
     op.drop_table('detalle_matricula')
+    op.drop_index(op.f('ix_detalle_firma_paz_y_salvo_id_detalle'), table_name='detalle_firma_paz_y_salvo')
+    op.drop_table('detalle_firma_paz_y_salvo')
     op.drop_index(op.f('ix_pupitres_id_mantenimiento'), table_name='pupitres')
     op.drop_table('pupitres')
     op.drop_index(op.f('ix_prueba_id_prueba'), table_name='prueba')
@@ -303,6 +358,8 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_salon_id_salon'), table_name='salon')
     op.drop_table('salon')
     op.drop_table('rol_usuario')
+    op.drop_index(op.f('ix_responsable_firma_id_responsable'), table_name='responsable_firma')
+    op.drop_table('responsable_firma')
     op.drop_index(op.f('ix_inventario_instrumento_id_instrumento'), table_name='inventario_instrumento')
     op.drop_table('inventario_instrumento')
     op.drop_index(op.f('ix_usuario_id_usuario'), table_name='usuario')
@@ -311,14 +368,20 @@ def downgrade() -> None:
     op.drop_table('ubicacion')
     op.drop_index(op.f('ix_tipo_prueba_id_tipo_prueba'), table_name='tipo_prueba')
     op.drop_table('tipo_prueba')
+    op.drop_index(op.f('ix_tipo_firma_id_tipo_firma'), table_name='tipo_firma')
+    op.drop_table('tipo_firma')
     op.drop_index(op.f('ix_tipo_concepto_id_tipo'), table_name='tipo_concepto')
     op.drop_table('tipo_concepto')
     op.drop_index(op.f('ix_rol_id_rol'), table_name='rol')
     op.drop_table('rol')
     op.drop_index(op.f('ix_periodo_academico_id_periodo'), table_name='periodo_academico')
     op.drop_table('periodo_academico')
+    op.drop_index(op.f('ix_login_attempt_id'), table_name='login_attempt')
+    op.drop_table('login_attempt')
     op.drop_index(op.f('ix_inventario_objeto_id_objeto'), table_name='inventario_objeto')
     op.drop_table('inventario_objeto')
+    op.drop_index(op.f('ix_credenciales_login_id_credencial'), table_name='credenciales_login')
+    op.drop_table('credenciales_login')
     op.drop_index(op.f('ix_categoria_id_categoria'), table_name='categoria')
     op.drop_table('categoria')
     op.drop_index(op.f('ix_auditoria_id_auditoria'), table_name='auditoria')
