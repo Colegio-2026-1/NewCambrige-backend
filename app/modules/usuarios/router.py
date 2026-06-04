@@ -28,6 +28,7 @@ def listar_usuarios(
         resultado.append({
             "id_usuario": u.id_usuario,
             "nombre": u.nombre,
+            "documento": u.documento,
             "estado": u.estado,
             "created_at": u.created_at,
             "roles": roles
@@ -85,6 +86,7 @@ def actualizar_usuario(
     return {
         "id_usuario": usuario.id_usuario,
         "nombre": usuario.nombre,
+        "documento": usuario.documento,
         "estado": usuario.estado,
         "created_at": usuario.created_at,
         "roles": roles
