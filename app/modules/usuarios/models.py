@@ -14,6 +14,7 @@ class Usuario(Base):
     __tablename__ = "usuario"
     id_usuario = Column(Integer, primary_key=True, index=True)
     nombre = Column(String(100), nullable=False)
+    documento = Column(String(10), nullable=False)
     #correo = Column(String(150), nullable=False, unique=True)
     estado = Column(Boolean, default=True, nullable=False)
     contrasena = Column(String(255), nullable=False)

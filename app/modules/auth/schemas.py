@@ -7,10 +7,12 @@ class TokenResponse(BaseModel):
 class UsuarioResponse(BaseModel):
     id_usuario: int
     nombre: str
+    documento: str
 
 class UsuarioCreate(BaseModel):
     nombre: str
     password: str
+    documento: str
     roles: Optional[List[str]] = None
     class Config:
         from_attributes = True

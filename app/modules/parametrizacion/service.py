@@ -178,6 +178,47 @@ def obtener_id_anio_vigente(db: Session) -> int:
 def get_tipos_prueba(db: Session):
     return db.query(TipoPrueba).order_by(TipoPrueba.id_tipo_prueba.asc()).all()
 
+def get_tipo_prueba_by_id(db: Session, id_tipo_prueba: int):
+    return db.query(TipoPrueba).filter(TipoPrueba.id_tipo_prueba == id_tipo_prueba).first()
+
+def get_tipo_prueba_by_nombre(db: Session, nombre: str):
+    return db.query(TipoPrueba).filter(TipoPrueba.nombre.ilike(nombre)).first()
+
+def get_tipos_prueba_por_grado(db: Session, grado: int):
+    return db.query(TipoPrueba).filter(
+        TipoPrueba.grado_min <= grado,
+        TipoPrueba.grado_max >= grado
+    ).all()
+
+def create_tipo_prueba(db: Session, datos_in: dict):
+    nuevo_min = datos_in["grado_min"]
+    nuevo_max = datos_in["grado_max"]
+
+    # Validamos que el nuevo rango no se solape con NINGUNA prueba existente
+    solapamiento = db.query(TipoPrueba).filter(
+        TipoPrueba.grado_min <= nuevo_max,
+        TipoPrueba.grado_max >= nuevo_min
+    ).first()
+
+    if solapamiento:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"¡Rango Solapado detectado con la prueba existente: {solapamiento.nombre}!"
+        )
+
+    # Creamos la instancia del modelo SQLAlchemy
+    nueva_prueba = TipoPrueba(
+        nombre=datos_in["nombre"],
+        grado_min=nuevo_min,
+        grado_max=nuevo_max,
+        descripcion=datos_in.get("descripcion")
+    )
+
+    db.add(nueva_prueba)
+    db.commit()
+    db.refresh(nueva_prueba)
+    return nueva_prueba
+
 def update_tipo_prueba(db: Session, id_tipo_prueba: int, datos_in: dict):
     prueba_obj = db.query(TipoPrueba).filter(TipoPrueba.id_tipo_prueba == id_tipo_prueba).first()
     if not prueba_obj:
@@ -200,6 +241,9 @@ def update_tipo_prueba(db: Session, id_tipo_prueba: int, datos_in: dict):
 
     prueba_obj.grado_min = nuevo_min
     prueba_obj.grado_max = nuevo_max
+
+    if "descripcion" in datos_in:
+        prueba_obj.descripcion = datos_in["descripcion"]
 
     db.commit()
     db.refresh(prueba_obj)

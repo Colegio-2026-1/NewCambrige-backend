@@ -145,20 +145,20 @@ def limpiar_intentos(
 
 def autenticar_usuario(
     db: Session,
-    nombre: str,
+    documento: str,
     password: str
 ):
 
     # verificar bloqueo
     verificar_bloqueo(
         db,
-        nombre
+        documento
     )
 
     usuario = db.query(
         Usuario
     ).filter(
-        Usuario.nombre == nombre
+        Usuario.documento == documento
     ).first()
 
     # credenciales incorrectas
@@ -172,7 +172,7 @@ def autenticar_usuario(
 
         registrar_intento_fallido(
             db,
-            nombre
+            documento
         )
 
         return None
@@ -180,7 +180,7 @@ def autenticar_usuario(
     # login exitoso
     limpiar_intentos(
         db,
-        nombre
+        documento
     )
 
     return usuario
@@ -192,6 +192,7 @@ def autenticar_usuario(
 def crear_usuario(
     db: Session,
     nombre: str,
+    documento: str,
     contra: str,
     roles: list = None
 ):
@@ -199,7 +200,7 @@ def crear_usuario(
     existente = db.query(
         Usuario
     ).filter(
-        Usuario.nombre == nombre
+        Usuario.documento == documento
     ).first()
 
     if existente:
@@ -207,6 +208,7 @@ def crear_usuario(
 
     nuevo = Usuario(
         nombre=nombre,
+        documento=documento,
         contrasena=hash_contra(contra)
     )
 

@@ -5,15 +5,15 @@ from app.core.database import Base
 
 
 # ======================
-# 🏫 SALON
+#  SALON
 # ======================
 class Salon(Base):
     __tablename__ = "salon"
 
     id_salon = Column(Integer, primary_key=True, index=True)
     id_usuario = Column(Integer, ForeignKey("usuario.id_usuario"))
-    grado = Column(Integer, nullable=False)
-    grupo = Column(Integer, nullable=False)
+    grado = Column(String(10), nullable=False)
+    grupo = Column(String(2), nullable=False)
     id_periodo = Column(Integer, ForeignKey("periodo_academico.id_periodo"))
 
     periodo = relationship("PeriodoAcademico")
@@ -21,7 +21,7 @@ class Salon(Base):
 
 
 # ======================
-# 🧪 TIPO PRUEBA
+#  TIPO PRUEBA
 # ======================
 class TipoPrueba(Base):
     __tablename__ = "tipo_prueba"
@@ -34,7 +34,7 @@ class TipoPrueba(Base):
 
 
 # ======================
-# 🧪 PRUEBA (PAGO)
+#  PRUEBA (PAGO)
 # ======================
 class Prueba(Base):
     __tablename__ = "prueba"
@@ -56,7 +56,7 @@ class Prueba(Base):
 
 
 # ======================
-# 🪑 PUPITRE (APROBADO / NO APROBADO)
+#  PUPITRE (APROBADO / NO APROBADO)
 # ======================
 class Pupitre(Base):
     __tablename__ = "pupitres"
@@ -74,7 +74,7 @@ class Pupitre(Base):
 
 
 # ======================
-# 📚 INVENTARIO LIBRO
+#  INVENTARIO LIBRO
 # ======================
 class InventarioLibro(Base):
     __tablename__ = "inventario_libro"
@@ -92,7 +92,7 @@ class InventarioLibro(Base):
 
 
 # ======================
-# 📖 PRESTAMO LIBRO
+# PRESTAMO LIBRO
 # ======================
 class PrestamoLibro(Base):
     __tablename__ = "prestamo_libro"
