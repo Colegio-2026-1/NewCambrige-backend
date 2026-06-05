@@ -29,4 +29,4 @@ RUN chmod +x start.sh
 
 EXPOSE 8000
 
-CMD ["sh ./start.sh"]
+CMD ["sh, ./start.sh"]
