@@ -2,7 +2,7 @@
 
 echo "Ejecutando migraciones..."
 
-alembic upgrade head
+alembic upgrade head || echo "Error ejecutando migraciones"
 
 echo "Iniciando FastAPI..."
 
