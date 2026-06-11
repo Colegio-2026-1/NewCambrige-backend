@@ -4,8 +4,8 @@ from typing import List, Optional
 
 from fastapi import HTTPException, status
 from app.shared.models import PeriodoAcademico, Auditoria
-from app.modules.usuarios.models import Usuario  
-from app.modules.salon.models import TipoPrueba  
+from app.modules.usuarios.models import Usuario, RolUsuario, Rol 
+from app.modules.salon.models import TipoPrueba, Salon  
 from app.core.database import SessionLocal
 from datetime import datetime
 from .schemas import AnioEscolarCreate, AnioEscolarUpdate
@@ -21,9 +21,7 @@ def get_anio_by_id(db: Session, id_periodo: int) -> Optional[PeriodoAcademico]:
 
 # ============ CREACIÓN ============
 def crear_anio_escolar(db: Session, data_in: AnioEscolarCreate, usuario_nombre: str, forzar: bool = False):
-    nombre_str = str(data_in.anio_inicio) # Convertimos el 2025 entero a string "2025" (4 caracteres)
-
-    # 1. Validar duplicados (que no existan dos "2025")
+    nombre_str = str(data_in.anio_inicio) 
     anio_existente = db.query(PeriodoAcademico).filter(PeriodoAcademico.nombre == nombre_str).first()
     if anio_existente:
         raise HTTPException(
@@ -31,7 +29,6 @@ def crear_anio_escolar(db: Session, data_in: AnioEscolarCreate, usuario_nombre: 
             detail=f"El año escolar {nombre_str} ya está registrado en el sistema."
         )
 
-    # 2. Validar conflicto de año activo (Doble Intento)
     if data_in.activo:
         anio_activo_actual = db.query(PeriodoAcademico).filter(PeriodoAcademico.activo == True).first()
         if anio_activo_actual and not forzar:
@@ -42,7 +39,6 @@ def crear_anio_escolar(db: Session, data_in: AnioEscolarCreate, usuario_nombre: 
         if anio_activo_actual and forzar:
             anio_activo_actual.activo = False
 
-    # 3. Crear el registro usando tus campos reales
     nuevo_periodo = PeriodoAcademico(
         nombre=nombre_str,
         fecha_inicio=data_in.fecha_inicio,
@@ -52,7 +48,6 @@ def crear_anio_escolar(db: Session, data_in: AnioEscolarCreate, usuario_nombre: 
     db.add(nuevo_periodo)
     db.flush()
 
-    # Auditoría
     db.add(Auditoria(
         tabla="periodo_academico", 
         id_registro=nuevo_periodo.id_periodo, 
@@ -71,7 +66,6 @@ def update_anio_escolar(db: Session, id_periodo: int, datos_actualizar: dict, us
     if not anio_obj:
         return None
 
-    # 1. Si se intenta activar el año (pasar activo de False a True)
     nuevo_estado_activo = datos_actualizar.get("activo")
     if nuevo_estado_activo is True and anio_obj.activo is False:
         anio_activo_otro = db.query(PeriodoAcademico).filter(
@@ -88,12 +82,10 @@ def update_anio_escolar(db: Session, id_periodo: int, datos_actualizar: dict, us
             else:
                 anio_activo_otro.activo = False
 
-    # 2. Actualizar dinámicamente solo los campos que el usuario envió (activo, fecha_inicio, fecha_fin)
     for llave, valor in datos_actualizar.items():
         if hasattr(anio_obj, llave):
             setattr(anio_obj, llave, valor)
 
-    # 3. Registrar auditoría
     db.add(Auditoria(
         tabla="periodo_academico", 
         id_registro=id_periodo, 
@@ -113,14 +105,11 @@ def verificar_y_ejecutar_cierre_automatico():
     """
     db = SessionLocal()
     try:
-        # Extraemos la fecha de hoy (año, mes, día) a las 00:00:00 para comparar limpiamente
         hoy = datetime.now().date()
 
-        # 1. Buscar el periodo académico que esté activo
         periodo_activo = db.query(PeriodoAcademico).filter(PeriodoAcademico.activo == True).first()
         
         if periodo_activo:
-            # Extraemos solo la fecha (año, mes, día) de la fecha_fin de la base de datos
             fecha_fin_solo_dia = periodo_activo.fecha_fin.date()
             
             
@@ -128,7 +117,6 @@ def verificar_y_ejecutar_cierre_automatico():
                 nombre_periodo_cerrado = periodo_activo.nombre
                 id_periodo_cerrado = periodo_activo.id_periodo
                 
-                # A) Desactivar el periodo académico
                 periodo_activo.activo = False
                 
                 db.add(Auditoria(
@@ -138,7 +126,6 @@ def verificar_y_ejecutar_cierre_automatico():
                     usuario="SISTEMA_AUTOMATICO"
                 ))
                 
-                # B) Desactivar masivamente a los usuarios
                 usuarios_afectados = db.query(Usuario).filter(Usuario.estado == True).update(
                     {Usuario.estado: False}, 
                     synchronize_session=False
@@ -194,7 +181,6 @@ def create_tipo_prueba(db: Session, datos_in: dict):
     nuevo_min = datos_in["grado_min"]
     nuevo_max = datos_in["grado_max"]
 
-    # Validamos que el nuevo rango no se solape con NINGUNA prueba existente
     solapamiento = db.query(TipoPrueba).filter(
         TipoPrueba.grado_min <= nuevo_max,
         TipoPrueba.grado_max >= nuevo_min
@@ -206,7 +192,6 @@ def create_tipo_prueba(db: Session, datos_in: dict):
             detail=f"¡Rango Solapado detectado con la prueba existente: {solapamiento.nombre}!"
         )
 
-    # Creamos la instancia del modelo SQLAlchemy
     nueva_prueba = TipoPrueba(
         nombre=datos_in["nombre"],
         grado_min=nuevo_min,
@@ -248,3 +233,51 @@ def update_tipo_prueba(db: Session, id_tipo_prueba: int, datos_in: dict):
     db.commit()
     db.refresh(prueba_obj)
     return prueba_obj
+
+
+#ASIGNAR TITULARES
+
+def get_titulares_activos(db: Session):
+    return (
+        db.query(Usuario)
+        .join(RolUsuario, Usuario.id_usuario == RolUsuario.id_usuario)
+        .join(Rol, RolUsuario.id_rol == Rol.id_rol)
+        .filter(
+            Rol.nombre.ilike("%titular%"), 
+            Usuario.estado == True         
+        )
+        .all()
+    )
+
+def get_salones_para_asignacion(db: Session, id_periodo: int):
+    return (
+        db.query(Salon)
+        .filter(Salon.id_periodo == id_periodo)
+        .all()
+    )
+
+def asignar_titular_a_salon(db: Session, id_salon: int, id_usuario: int):
+    salon = db.query(Salon).filter(Salon.id_salon == id_salon).first()
+    
+    if not salon:
+        return None
+        
+    salon.id_usuario = id_usuario
+    db.commit()
+    db.refresh(salon)
+    
+    return salon
+
+def crear_salon_parametrizacion(db: Session, data: dict):
+    nuevo_salon = Salon(
+        grado=data["grado"],
+        grupo=data["grupo"],
+        id_periodo=data["id_periodo"],
+        id_usuario=data.get("id_usuario") 
+    )
+    
+    db.add(nuevo_salon)
+    db.commit()
+    db.refresh(nuevo_salon)
+    
+    return nuevo_salon

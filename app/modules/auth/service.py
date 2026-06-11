@@ -143,47 +143,24 @@ def limpiar_intentos(
 # AUTENTICAR USUARIO
 # ==========================================
 
-def autenticar_usuario(
-    db: Session,
-    documento: str,
-    password: str
-):
+def autenticar_usuario(db: Session, documento: str, password: str):
+    verificar_bloqueo(db, documento)
 
-    # verificar bloqueo
-    verificar_bloqueo(
-        db,
-        documento
-    )
+    usuario = db.query(Usuario).filter(Usuario.documento == documento).first()
 
-    usuario = db.query(
-        Usuario
-    ).filter(
-        Usuario.documento == documento
-    ).first()
+    if not usuario:
+        registrar_intento_fallido(db, documento)
+        return None, "no_existe"
 
-    # credenciales incorrectas
-    if (
-        not usuario or
-        not pwd_context.verify(
-            password,
-            usuario.contrasena
-        )
-    ):
+    if not usuario.estado:
+        return None, "inactivo"
 
-        registrar_intento_fallido(
-            db,
-            documento
-        )
+    if not pwd_context.verify(password, usuario.contrasena):
+        registrar_intento_fallido(db, documento)
+        return None, "password_incorrecta"
 
-        return None
-
-    # login exitoso
-    limpiar_intentos(
-        db,
-        documento
-    )
-
-    return usuario
+    limpiar_intentos(db, documento)
+    return usuario, "ok"
 
 # ==========================================
 # CREAR USUARIO

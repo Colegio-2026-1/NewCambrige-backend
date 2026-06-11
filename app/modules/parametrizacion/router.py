@@ -5,6 +5,9 @@ from typing import List
 from app.core.database import get_db
 from .schemas import AnioEscolarCreate, AnioEscolarRead, AnioEscolarUpdate, TipoPruebaUpdate, TipoPruebaRead, TipoPruebaCreate
 from .service import crear_anio_escolar, get_anios_all, update_anio_escolar, get_tipos_prueba, update_tipo_prueba, create_tipo_prueba, get_tipo_prueba_by_id, get_tipo_prueba_by_nombre, get_tipos_prueba_por_grado
+from app.modules.parametrizacion import service, schemas
+from app.modules.auth.deps import require_roles
+
 
 router = APIRouter(tags=["Parametrización"])
 
@@ -92,3 +95,81 @@ def editar_rangos_prueba(
     except ValueError as e:
         errores = e.errors() if hasattr(e, 'errors') else [{"msg": str(e)}]
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=errores[0]['msg'] if errores else str(e))
+    
+
+
+# ASIGNACIÓN DE TITULARES
+
+@router.get(
+    "/titulares", 
+    response_model=List[schemas.TitularResponse]
+)
+def listar_titulares(
+    db: Session = Depends(get_db),
+    current_user = Depends(require_roles(["admin", "parametrizacion"]))
+):
+    """Devuelve la lista de todos los usuarios activos que tienen el rol de titular."""
+    return service.get_titulares_activos(db)
+
+
+@router.get(
+    "/salones/periodo/{id_periodo}", 
+    response_model=List[schemas.SalonAsignacionResponse]
+)
+def listar_salones_por_periodo(
+    id_periodo: int,
+    db: Session = Depends(get_db),
+    current_user = Depends(require_roles(["admin", "parametrizacion"]))
+):
+    """Devuelve los salones de un periodo para armar los combos de Grado y Grupo."""
+    return service.get_salones_para_asignacion(db, id_periodo)
+
+
+@router.put(
+    "/salones/{id_salon}/asignar-titular", 
+    response_model=schemas.SalonAsignacionResponse
+)
+def asignar_titular(
+    id_salon: int,
+    data: schemas.AsignarTitularRequest,
+    db: Session = Depends(get_db),
+    current_user = Depends(require_roles(["admin", "parametrizacion"]))
+):
+    """Actualiza el id_usuario (titular) de un salón específico."""
+    salon_actualizado = service.asignar_titular_a_salon(db, id_salon, data.id_usuario)
+    
+    if not salon_actualizado:
+        raise HTTPException(
+            status_code=404, 
+            detail="Salón no encontrado"
+        )
+        
+    return salon_actualizado
+
+@router.post(
+    "/salones", 
+    response_model=schemas.SalonAsignacionResponse, 
+    status_code=status.HTTP_201_CREATED
+)
+def crear_salon_desde_parametrizacion(
+    data: schemas.SalonCreateParam,
+    db: Session = Depends(get_db),
+    current_user = Depends(require_roles(["admin", "parametrizacion"]))
+):
+    from app.modules.salon.models import Salon  
+
+    salon_existente = db.query(Salon).filter(
+        Salon.grado == data.grado,
+        Salon.grupo == data.grupo,
+        Salon.id_periodo == data.id_periodo
+    ).first()
+
+    if salon_existente:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"El salón {data.grado} - {data.grupo} ya existe en este periodo escolar."
+        )
+
+    nuevo_salon = service.crear_salon_parametrizacion(db, data.model_dump())
+    
+    return nuevo_salon

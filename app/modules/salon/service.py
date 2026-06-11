@@ -24,6 +24,9 @@ def get_by_id(db: Session, salon_id: int) -> Optional[Salon]:
 def get_by_grado_grupo(db: Session, grado: int, grupo: int) -> List[Salon]:
     return db.query(Salon).filter(Salon.grado == grado, Salon.grupo == grupo).all()
 
+def get_by_titular(db: Session, current_user) -> List[Salon]:
+    return db.query(Salon).filter(Salon.id_usuario == current_user.id_usuario).all()
+
 def create(db: Session, data: dict) -> Salon:
     nuevo = Salon(**data)
     db.add(nuevo)

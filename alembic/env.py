@@ -22,6 +22,7 @@ import app.modules.tesoreria.models     # noqa: F401
 import app.modules.uniformes.models     # noqa: F401
 import app.modules.rectoria.models      # noqa: F401
 import app.modules.secretaria.models    # noqa: F401
+import app.modules.importacion.models   # noqa: F401
 
 
 # Configuración de logging de alembic.ini

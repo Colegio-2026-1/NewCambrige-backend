@@ -38,9 +38,9 @@ class ResponsableFirma(Base):
     __tablename__ = "responsable_firma"
     id_responsable = Column(Integer, primary_key=True, index=True)
     id_usuario = Column(Integer, ForeignKey("usuario.id_usuario"), nullable=False)
-    #id_tipo_firma = Column(Integer, ForeignKey("tipo_firma.id_tipo_firma"), nullable=False)
+    id_tipo_firma = Column(Integer, ForeignKey("tipo_firma.id_tipo_firma"), nullable=False)
     ruta_firma = Column(String(255), nullable=True)
     #activo = Column(Boolean, default=True)
     #updated_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())
     usuario = relationship("Usuario")
-    #tipo_firma = relationship("TipoFirma")
+    tipo_firma = relationship("TipoFirma")

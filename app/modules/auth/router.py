@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status 
 from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from app.core.database import get_db
@@ -26,9 +26,20 @@ oauth2_scheme = OAuth2PasswordBearer(
 
 @router.post("/token", response_model=TokenResponse)
 def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    usuario = service.autenticar_usuario(db, form_data.username, form_data.password)
+    usuario, motivo = service.autenticar_usuario(db, form_data.username, form_data.password)
+
     if not usuario:
-        raise HTTPException(status_code=401, detail="Credenciales incorrectas")
+        if motivo == "inactivo":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Usuario inactivo. Contacte al administrador."
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Credenciales incorrectas"
+            )
+
     return service.generar_token(db, usuario)
 
 @router.get("/me", response_model=UsuarioResponse)

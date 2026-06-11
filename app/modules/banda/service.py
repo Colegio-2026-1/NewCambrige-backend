@@ -1,13 +1,31 @@
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
 from typing import Optional, List
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 
+from app.shared.models import Auditoria
 from app.modules.banda.models import (
     Categoria, Ubicacion, InventarioInstrumento, PrestamoInstrumento
 )
 from app.modules.estudiantes.models import Estudiante
 
+# ============ AUDITORÍA (HELPER) ============
+def registrar_auditoria_central(db: Session, current_user, tabla: str, id_reg: int, accion_msg: str):
+    """
+    Registra en la tabla 'auditoria' central del proyecto.
+    """
+    nom_usr = getattr(current_user, 'nombre', 'Sistema')
+    
+    mensaje_seguro = str(accion_msg)[:50]
+    
+    log = Auditoria(
+        tabla=tabla,
+        id_registro=id_reg,
+        accion=mensaje_seguro,
+        usuario=nom_usr
+    )
+    db.add(log)
+    
 # ============ CATEGORÍAS ============
 def get_categorias_all(db: Session, skip: int = 0, limit: int = 100) -> List[Categoria]:
     return db.query(Categoria).offset(skip).limit(limit).all()
@@ -91,7 +109,7 @@ def get_instrumentos_all(
     )
     
     if solo_disponibles:
-        query = query.filter(InventarioInstrumento.disponible == True)
+        query = query.filter(InventarioInstrumento.cantidad_disponible > 0, InventarioInstrumento.estado == "Activo")
     
     if categoria_id:
         query = query.filter(InventarioInstrumento.id_categoria == categoria_id)
@@ -102,64 +120,101 @@ def get_instrumento_by_id(db: Session, instrumento_id: int) -> Optional[Inventar
     return db.query(InventarioInstrumento).options(
         joinedload(InventarioInstrumento.categoria),
         joinedload(InventarioInstrumento.ubicacion)
-    ).filter(InventarioInstrumento.id_instrumento == instrumento_id).first()
+    ).filter(InventarioInstrumento.id_instrumento == instrumento_id).first() 
 
-def create_instrumento(db: Session, data: dict) -> InventarioInstrumento:
+def create_instrumento(db: Session, data: dict, current_user) -> InventarioInstrumento:
+    data["cantidad_disponible"] = data["cantidad_total"]
     nuevo = InventarioInstrumento(**data)
     db.add(nuevo)
+    db.flush() 
+    
+    registrar_auditoria_central(
+        db, current_user, "inventario_instrumento", nuevo.id_instrumento,
+        f"REGISTRO: {nuevo.nombre}")
     db.commit()
     db.refresh(nuevo)
     return nuevo
 
-def update_instrumento(db: Session, instrumento_id: int, data: dict) -> Optional[InventarioInstrumento]:
+
+# app/modules/banda/service.py
+
+def update_instrumento(db: Session, instrumento_id: int, data: dict, current_user) -> Optional[InventarioInstrumento]:
     instrumento = get_instrumento_by_id(db, instrumento_id)
     if not instrumento:
         return None
+    
+    # ── LOGICA DE NEGOCIO: REPARACIÓN EXITOSA ──
+    if "estado" in data:
+        nuevo_estado = data["estado"]
+        if nuevo_estado == "Activo" and instrumento.estado == "En mantenimiento":
+            if instrumento.cantidad_disponible < instrumento.cantidad_total:
+                instrumento.cantidad_disponible += 1
+        
+        elif nuevo_estado == "En mantenimiento" and instrumento.estado == "Activo":
+            if instrumento.cantidad_disponible > 0:
+                instrumento.cantidad_disponible -= 1
+
     for key, value in data.items():
-        if value is not None:
+        if value is not None and key not in ["id_instrumento", "id_inventario"]:
             setattr(instrumento, key, value)
+            
+    registrar_auditoria_central(db, current_user, "inventario_instrumento", instrumento.id_instrumento, f"EDIT: {instrumento.nombre}")
+    
     db.commit()
     db.refresh(instrumento)
     return instrumento
 
-def delete_instrumento(db: Session, instrumento_id: int) -> bool:
+def delete_instrumento(db: Session, instrumento_id: int, current_user) -> bool:
     instrumento = get_instrumento_by_id(db, instrumento_id)
     if not instrumento:
         return False
     
-    # Verificar si tiene préstamos activos
-    prestamo_activo = db.query(PrestamoInstrumento).filter(
-        PrestamoInstrumento.id_instrumento == instrumento_id,
-        PrestamoInstrumento.estado_entrega == "prestado"
-    ).first()
+    tiene_historial = db.query(PrestamoInstrumento).filter(PrestamoInstrumento.id_instrumento == instrumento_id).first()
+    if tiene_historial:
+        raise ValueError("No es posible eliminar este instrumento. Tiene historial de préstamos vincuados.")
     
-    if prestamo_activo:
-        raise ValueError("No se puede eliminar un instrumento con préstamos activos")
+    if instrumento.cantidad_disponible < instrumento.cantidad_total:
+        raise ValueError("No es posible eliminar este instrumento. Tiene asignaciones activas.")
+    
+    registrar_auditoria_central(db, current_user, "inventario_instrumento", instrumento_id,
+                                f"ELIMINACIÓN: {instrumento.nombre}")
     
     db.delete(instrumento)
     db.commit()
     return True
 
 # ============ PRÉSTAMOS DE INSTRUMENTOS ============
-def get_prestamos_all(
-    db: Session, 
-    skip: int = 0, 
-    limit: int = 100,
-    solo_activos: bool = False,
-    estudiante_id: Optional[int] = None
-) -> List[PrestamoInstrumento]:
+def get_prestamos_all(db: Session, skip: int = 0, limit: int = 100, solo_activos: bool = False, estudiante_id: Optional[int] = None) -> List[dict]:
     query = db.query(PrestamoInstrumento).options(
         joinedload(PrestamoInstrumento.instrumento),
-        joinedload(PrestamoInstrumento.estudiante)
+        joinedload(PrestamoInstrumento.estudiante).joinedload(Estudiante.salon) 
     )
     
     if solo_activos:
         query = query.filter(PrestamoInstrumento.estado_entrega == "prestado")
     
-    if estudiante_id:
-        query = query.filter(PrestamoInstrumento.id_estudiante == estudiante_id)
+    prestamos = query.order_by(PrestamoInstrumento.fecha_prestamo.desc()).offset(skip).limit(limit).all()
     
-    return query.order_by(PrestamoInstrumento.fecha_prestamo.desc()).offset(skip).limit(limit).all()
+    resultado = []
+    for p in prestamos:
+        resultado.append({
+            "id_prestamo": p.id_prestamo,
+            "id_instrumento": p.id_instrumento,
+            "id_estudiante": p.id_estudiante,
+            "fecha_prestamo": p.fecha_prestamo,
+            "fecha_devolucion": p.fecha_devolucion,
+            "estado_entrega": p.estado_entrega,
+            "estado_al_devolver": p.estado_al_devolver,
+            "observacion": p.observacion,
+            "created_at": p.created_at,
+            "updated_at": p.updated_at,
+            "instrumento_nombre": p.instrumento.nombre if p.instrumento else "N/A",
+            "estudiante_nombre": p.estudiante.nombre if p.estudiante else "N/A",
+            "estudiante_documento": p.estudiante.documento if p.estudiante else "N/A",
+            "estudiante_grado": p.estudiante.salon.grado if p.estudiante and p.estudiante.salon else "N/A",
+            "estudiante_grupo": p.estudiante.salon.grupo if p.estudiante and p.estudiante.salon else "N/A",
+        })
+    return resultado
 
 def get_prestamo_by_id(db: Session, prestamo_id: int) -> Optional[PrestamoInstrumento]:
     return db.query(PrestamoInstrumento).options(
@@ -173,54 +228,75 @@ def get_prestamos_activos_por_estudiante(db: Session, estudiante_id: int) -> Lis
         PrestamoInstrumento.estado_entrega == "prestado"
     ).all()
 
-def create_prestamo(db: Session, data: dict) -> Optional[PrestamoInstrumento]:
-    # Verificar que el instrumento existe y está disponible
+def create_prestamo(db: Session, data: dict, current_user) -> Optional[PrestamoInstrumento]:
     instrumento = get_instrumento_by_id(db, data["id_instrumento"])
     if not instrumento:
         return None
     
-    if not instrumento.disponible:
-        raise ValueError("El instrumento no está disponible para préstamo")
+    if instrumento.cantidad_disponible <= 0 or instrumento.estado != "Activo":
+        raise ValueError("No hay instrumentos disponibles para asignar.")
     
-    # Verificar que el estudiante existe
+    prestamo_activo = db.query(PrestamoInstrumento).filter(
+        PrestamoInstrumento.id_estudiante == data["id_estudiante"],
+        PrestamoInstrumento.estado_entrega == "prestado"
+    ).first()
+    
+    if prestamo_activo:
+        raise ValueError("El estudiante ya tiene un instrumento asignado. Debe registrar la devolución antes de asignar uno nuevo.")
+    
     estudiante = db.query(Estudiante).filter(Estudiante.id_estudiante == data["id_estudiante"]).first()
     if not estudiante:
         return None
     
-    # Crear préstamo
     prestamo = PrestamoInstrumento(
         id_instrumento=data["id_instrumento"],
         id_estudiante=data["id_estudiante"],
-        fecha_prestamo=data["fecha_prestamo"],
+        fecha_prestamo=datetime.now(),
         observacion=data.get("observacion"),
         estado_entrega="prestado"
     )
     
-    # Marcar instrumento como no disponible
-    instrumento.disponible = False
+    instrumento.cantidad_disponible -= 1
     
     db.add(prestamo)
+    db.flush()
+    registrar_auditoria_central(db, current_user, "prestamo_instrumento", prestamo.id_prestamo,
+                                f"ASIGNACIÓN: {instrumento.nombre}")
     db.commit()
     db.refresh(prestamo)
     return prestamo
 
-def devolver_instrumento(db: Session, prestamo_id: int) -> Optional[PrestamoInstrumento]:
+def devolver_instrumento(db: Session, prestamo_id: int, data: dict, current_user) -> Optional[PrestamoInstrumento]:
     prestamo = get_prestamo_by_id(db, prestamo_id)
     if not prestamo:
         return None
     
-    if prestamo.estado_entrega != "prestado":
-        raise ValueError("El instrumento ya fue devuelto")
+    if prestamo.estado_entrega == "devuelto":
+        return prestamo
+        
+    estado_devolucion = data.get("estado_al_devolver")
+    observaciones = data.get("observaciones")
     
-    # Actualizar préstamo
+    if estado_devolucion == "Malo" and not observaciones:
+        raise ValueError("Debe describir el daño del instrumento en las observaciones.")
+    
+    estado_recibido = str(data.get("estado_al_devolver", "Bueno")).strip().capitalize()
+
     prestamo.estado_entrega = "devuelto"
-    prestamo.fecha_devolucion = date.today()
+    prestamo.estado_al_devolver = data.get("estado_al_devolver")
+    prestamo.observacion = data.get("observaciones") or prestamo.observacion
+    prestamo.fecha_devolucion = datetime.now() 
     
-    # Marcar instrumento como disponible nuevamente
     instrumento = get_instrumento_by_id(db, prestamo.id_instrumento)
     if instrumento:
-        instrumento.disponible = True
-    
+        if estado_devolucion == "Bueno":
+            instrumento.cantidad_disponible += 1
+        else:
+            instrumento.estado = "En mantenimiento"
+            
+              
+    registrar_auditoria_central(db, current_user, "prestamo_instrumento", prestamo_id,
+                                f"DEVOLUCIÓN: {instrumento.nombre}")
     db.commit()
     db.refresh(prestamo)
     return prestamo
@@ -244,20 +320,15 @@ def get_historial_instrumento(db: Session, instrumento_id: int) -> List[Prestamo
     ).order_by(PrestamoInstrumento.fecha_prestamo.desc()).all()
 
 def get_estadisticas(db: Session) -> dict:
-    total_instrumentos = db.query(InventarioInstrumento).count()
-    disponibles = db.query(InventarioInstrumento).filter(InventarioInstrumento.disponible == True).count()
+    total_instrumentos = db.query(func.sum(InventarioInstrumento.cantidad_total)).scalar() or 0
+    disponibles = db.query(func.sum(InventarioInstrumento.cantidad_disponible)).scalar() or 0
     prestamos_activos = db.query(PrestamoInstrumento).filter(
         PrestamoInstrumento.estado_entrega == "prestado"
-    ).count()
-    
-    prestamos_mes = db.query(PrestamoInstrumento).filter(
-        PrestamoInstrumento.fecha_prestamo >= date.today().replace(day=1)
     ).count()
     
     return {
         "total_instrumentos": total_instrumentos,
         "instrumentos_disponibles": disponibles,
         "instrumentos_prestados": total_instrumentos - disponibles,
-        "prestamos_activos": prestamos_activos,
-        "prestamos_este_mes": prestamos_mes
+        "prestamos_activos": prestamos_activos
     }

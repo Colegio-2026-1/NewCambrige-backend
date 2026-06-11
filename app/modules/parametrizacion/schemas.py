@@ -1,8 +1,9 @@
 
 # app/modules/parametrizacion/schemas.py
 from pydantic import BaseModel, Field, field_validator, model_validator
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
+
 
 #PERIODO ACADEMICO
 
@@ -77,3 +78,32 @@ class TipoPruebaRead(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+#ASIGNACION TITULAR
+
+class TitularResponse(BaseModel):
+    id_usuario: int
+    nombre: str
+    documento: str
+
+    class Config:
+        from_attributes = True
+
+class SalonAsignacionResponse(BaseModel):
+    id_salon: int
+    grado: str
+    grupo: str
+    id_usuario: Optional[int] = None 
+
+    class Config:
+        from_attributes = True
+
+class AsignarTitularRequest(BaseModel):
+    id_usuario: Optional[int] = None
+
+class SalonCreateParam(BaseModel):
+    grado: str
+    grupo: str
+    id_periodo: int
+    id_usuario: Optional[int] = None  
