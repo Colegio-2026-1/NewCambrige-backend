@@ -48,7 +48,7 @@ weasyprint==68.1
 webencodings==0.5.1
 websockets==16.0
 zopfli==0.4.1
-fpdf>=1.86
+fpdf2==2.8.7
 
 # Importacion
 playwright>=1.40.0
