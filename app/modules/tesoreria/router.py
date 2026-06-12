@@ -23,7 +23,7 @@ def registrar_pago(
 def pagos_pendientes(
     periodo_id: Optional[int] = Query(None),
     db: Session = Depends(get_db),
-    current_user = Depends(require_roles(["admin", "tesoreria", "secretaria"]))
+    current_user = Depends(require_roles(["admin", "tesoreria"]))
 ):
     return service.obtener_pagos_pendientes(db, periodo_id)
 
@@ -31,7 +31,7 @@ def pagos_pendientes(
 def pagos_estudiante(
     estudiante_id: int,
     db: Session = Depends(get_db),
-    current_user = Depends(require_roles(["admin", "tesoreria", "secretaria"]))
+    current_user = Depends(require_roles(["admin", "tesoreria"]))
 ):
     firmas = db.query(FirmasPazYSalvo).filter(
         FirmasPazYSalvo.id_estudiante == estudiante_id

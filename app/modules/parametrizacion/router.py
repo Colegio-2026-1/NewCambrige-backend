@@ -16,7 +16,8 @@ router = APIRouter(tags=["Parametrización"])
 def registrar_anio(
     payload: AnioEscolarCreate, 
     forzar: bool = Query(False, description="Forzar la desactivación del año anterior"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user = Depends(require_roles(["admin", "rectoria"]))
 ):
     return crear_anio_escolar(db, payload, "USUARIO_PRUEBA", forzar)
 
@@ -30,7 +31,8 @@ def actualizar_anio(
     id_periodo: int,
     payload: AnioEscolarUpdate,
     forzar: bool = Query(False, description="Forzar la desactivación del año actual para activar este"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user = Depends(require_roles(["admin", "rectoria"]))
 ):
    
     datos_filtrados = payload.dict(exclude_unset=True)
@@ -44,11 +46,18 @@ def actualizar_anio(
 #TIPOS DE PRUEBA
 
 @router.get("/tipos-prueba", response_model=List[TipoPruebaRead])
-def listar_tipos_prueba(db: Session = Depends(get_db)):
+def listar_tipos_prueba(
+    db: Session = Depends(get_db),
+    current_user = Depends(require_roles(["admin", "rectoria"]))
+):
     return get_tipos_prueba(db)
 
 @router.get("/tipos-prueba/{id_tipo_prueba}", response_model=TipoPruebaRead)
-def obtener_tipo_prueba(id_tipo_prueba: int, db: Session = Depends(get_db)):
+def obtener_tipo_prueba(
+    id_tipo_prueba: int, 
+    db: Session = Depends(get_db),
+    current_user = Depends(require_roles(["admin", "rectoria"]))
+):
     """Obtiene los detalles de un tipo de prueba específico por su ID."""
     prueba = get_tipo_prueba_by_id(db, id_tipo_prueba)
     if not prueba:
@@ -56,7 +65,7 @@ def obtener_tipo_prueba(id_tipo_prueba: int, db: Session = Depends(get_db)):
     return prueba
 
 @router.get("/tipos-prueba/grado/{grado}", response_model=List[TipoPruebaRead])
-def listar_tipos_prueba_por_grado(grado: int, db: Session = Depends(get_db)):
+def listar_tipos_prueba_por_grado(grado: int, db: Session = Depends(get_db), current_user = Depends(require_roles(["admin", "rectoria"]))):
     """Obtiene los tipos de prueba que aplican a un grado escolar específico."""
     if not (1 <= grado <= 12):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Grado inválido (debe ser de 1 a 12)")
@@ -65,7 +74,8 @@ def listar_tipos_prueba_por_grado(grado: int, db: Session = Depends(get_db)):
 @router.post("/tipos-prueba", response_model=TipoPruebaRead, status_code=status.HTTP_201_CREATED)
 def crear_nuevo_tipo_prueba(
     payload: TipoPruebaCreate, 
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user = Depends(require_roles(["admin", "rectoria"]))
 ):
     """Permite registrar un nuevo tipo de prueba en el sistema."""
     try:
@@ -84,7 +94,8 @@ def crear_nuevo_tipo_prueba(
 def editar_rangos_prueba(
     id_tipo_prueba: int, 
     payload: TipoPruebaUpdate, 
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user = Depends(require_roles(["admin", "rectoria"]))
 ):
     """Permite editar los rangos de grados (min y max) y la descripción de la prueba."""
     try:
@@ -106,7 +117,7 @@ def editar_rangos_prueba(
 )
 def listar_titulares(
     db: Session = Depends(get_db),
-    current_user = Depends(require_roles(["admin", "parametrizacion"]))
+    current_user = Depends(require_roles(["admin", "rectoria"]))
 ):
     """Devuelve la lista de todos los usuarios activos que tienen el rol de titular."""
     return service.get_titulares_activos(db)
@@ -119,7 +130,7 @@ def listar_titulares(
 def listar_salones_por_periodo(
     id_periodo: int,
     db: Session = Depends(get_db),
-    current_user = Depends(require_roles(["admin", "parametrizacion"]))
+    current_user = Depends(require_roles(["admin", "rectoria"]))
 ):
     """Devuelve los salones de un periodo para armar los combos de Grado y Grupo."""
     return service.get_salones_para_asignacion(db, id_periodo)
@@ -133,7 +144,7 @@ def asignar_titular(
     id_salon: int,
     data: schemas.AsignarTitularRequest,
     db: Session = Depends(get_db),
-    current_user = Depends(require_roles(["admin", "parametrizacion"]))
+    current_user = Depends(require_roles(["admin", "rectoria"]))
 ):
     """Actualiza el id_usuario (titular) de un salón específico."""
     salon_actualizado = service.asignar_titular_a_salon(db, id_salon, data.id_usuario)
@@ -154,7 +165,7 @@ def asignar_titular(
 def crear_salon_desde_parametrizacion(
     data: schemas.SalonCreateParam,
     db: Session = Depends(get_db),
-    current_user = Depends(require_roles(["admin", "parametrizacion"]))
+    current_user = Depends(require_roles(["admin", "rectoria"]))
 ):
     from app.modules.salon.models import Salon  
 

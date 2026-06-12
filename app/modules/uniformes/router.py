@@ -62,8 +62,7 @@ def listar_objetos(
     current_user = Depends(
         require_roles([
             "admin",
-            "uniformes",
-            "secretaria"
+            "uniformes"
         ])
     )
 ):
@@ -99,8 +98,7 @@ def objetos_disponibles(
     current_user = Depends(
         require_roles([
             "admin",
-            "uniformes",
-            "secretaria"
+            "uniformes"
         ])
     )
 ):
@@ -212,8 +210,7 @@ def listar_prestamos(
     current_user = Depends(
         require_roles([
             "admin",
-            "uniformes",
-            "secretaria"
+            "uniformes"
         ])
     )
 ):
@@ -365,8 +362,7 @@ def listar_asignaciones(
     current_user = Depends(
         require_roles([
             "admin",
-            "uniformes",
-            "secretaria"
+            "uniformes"
         ])
     )
 ):

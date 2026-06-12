@@ -23,7 +23,7 @@ def listar_salones(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db),
-    current_user = Depends(require_roles(["admin", "titular", "tesoreria"]))
+    current_user = Depends(require_roles(["admin", "titular"]))
 ):
     if "admin" in current_user.roles:
         return service.get_all(db, skip, limit)
@@ -40,7 +40,7 @@ def listar_salones_por_periodo(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db),
-    current_user = Depends(require_roles(["admin", "titular", "tesoreria"]))
+    current_user = Depends(require_roles(["admin", "titular"]))
 ):
     return service.get_salon_all_by_periodo(db, id_periodo, skip, limit)
 
@@ -49,7 +49,7 @@ def listar_salones_por_periodo(
 def salones_por_grado_grupo(
     grado: int, grupo: int,
     db: Session = Depends(get_db),
-    current_user = Depends(require_roles(["admin", "titular", "tesoreria"]))
+    current_user = Depends(require_roles(["admin", "titular"]))
 ):
     return service.get_by_grado_grupo(db, grado, grupo)
 
@@ -220,7 +220,7 @@ def devolver_libro_prestado(
 def obtener_salon(
     salon_id: int,
     db: Session = Depends(get_db),
-    current_user = Depends(require_roles(["admin", "titular", "tesoreria"]))
+    current_user = Depends(require_roles(["admin", "titular"]))
 ):
     salon = service.get_by_id(db, salon_id)
     if not salon:

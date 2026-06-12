@@ -144,13 +144,13 @@ def limpiar_intentos(
 # ==========================================
 
 def autenticar_usuario(db: Session, documento: str, password: str):
-    verificar_bloqueo(db, documento)
-
+    
     usuario = db.query(Usuario).filter(Usuario.documento == documento).first()
 
     if not usuario:
-        registrar_intento_fallido(db, documento)
         return None, "no_existe"
+
+    verificar_bloqueo(db, documento)
 
     if not usuario.estado:
         return None, "inactivo"

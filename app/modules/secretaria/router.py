@@ -18,7 +18,7 @@ def listar_matriculas(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db),
-    current_user = Depends(require_roles(["admin", "secretaria", "tesoreria"]))
+    current_user = Depends(require_roles(["admin", "tesoreria"]))
 ):
     return service.get_matriculas_all(db, skip, limit)
 
@@ -28,7 +28,7 @@ def listar_matriculas(
 def matriculas_por_estudiante(
     estudiante_id: int,
     db: Session = Depends(get_db),
-    current_user = Depends(require_roles(["admin", "secretaria", "titular"]))
+    current_user = Depends(require_roles(["admin", "titular"]))
 ):
     return service.get_matriculas_por_estudiante(db, estudiante_id)
 
@@ -36,7 +36,7 @@ def matriculas_por_estudiante(
 def matriculas_por_periodo(
     periodo_id: int,
     db: Session = Depends(get_db),
-    current_user = Depends(require_roles(["admin", "secretaria", "titular", "tesoreria"]))
+    current_user = Depends(require_roles(["admin", "titular", "tesoreria"]))
 ):
     return service.get_matriculas_por_periodo(db, periodo_id)
 
@@ -93,7 +93,7 @@ def cancelar_matricula(
 def detalles_por_matricula(
     matricula_id: int,
     db: Session = Depends(get_db),
-    current_user = Depends(require_roles(["admin", "secretaria", "titular"]))
+    current_user = Depends(require_roles(["admin", "titular"]))
 ):
     return service.get_detalles_by_matricula(db, matricula_id)
 
@@ -103,7 +103,7 @@ def detalles_por_periodo(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db),
-    current_user = Depends(require_roles(["admin", "secretaria", "titular","tesoreria"]))
+    current_user = Depends(require_roles(["admin", "titular","tesoreria"]))
 ):
     return service.get_detalle_by_periodo(db, periodo_id, skip, limit)
 
@@ -114,7 +114,7 @@ def detalles_por_periodo_tipos(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db),
-    current_user = Depends(require_roles(["admin", "secretaria", "titular", "tesoreria"]))
+    current_user = Depends(require_roles(["admin", "titular", "tesoreria"]))
 ):
     return service.get_detalle_by_periodo_tipo(db, periodo_id,id_tipo, skip, limit)
 
