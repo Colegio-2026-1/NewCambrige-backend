@@ -80,8 +80,15 @@ def listar_objetos(
 )
 def obtener_inventario(
 
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 
+    current_user = Depends(
+        require_roles([
+            "admin",
+            "uniformes",
+            
+        ])
+    )
 ):
 
     return obtener_inventario_service(db)
@@ -120,7 +127,8 @@ def crear_objeto(
     current_user = Depends(
         require_roles([
             "admin",
-            "uniformes"
+            "uniformes",
+            
         ])
     )
 ):
@@ -147,7 +155,8 @@ def actualizar_objeto(
     current_user = Depends(
         require_roles([
             "admin",
-            "uniformes"
+            "uniformes",
+            
         ])
     )
 ):
@@ -239,7 +248,8 @@ def prestamos_activos(
     current_user = Depends(
         require_roles([
             "admin",
-            "uniformes"
+            "uniformes",
+            
         ])
     )
 ):
@@ -261,7 +271,8 @@ def registrar_prestamo(
     current_user = Depends(
         require_roles([
             "admin",
-            "uniformes"
+            "uniformes",
+            
         ])
     )
 ):
@@ -289,6 +300,12 @@ def registrar_prestamo(
             "El estudiante ya tiene una asignación activa"
 
         )
+    
+    if prestamo == "talla_invalida":
+        raise HTTPException(
+            status_code=400,
+            detail="La talla seleccionada no coincide con la talla registrada para la prenda"
+    )
 
     # =====================================
     # STOCK
@@ -321,7 +338,8 @@ def devolver_prestamo_old(
     current_user = Depends(
         require_roles([
             "admin",
-            "uniformes"
+            "uniformes",
+            
         ])
     )
 ):
@@ -421,7 +439,8 @@ def devolver_uniforme(
     current_user = Depends(
         require_roles([
             "admin",
-            "uniformes"
+            "uniformes",
+            
         ])
     )
 
@@ -472,7 +491,9 @@ def eliminar_objeto(
     current_user = Depends(
         require_roles([
             "admin",
-            "uniformes"
+            "uniformes",
+            
+            
         ])
     )
 ):
@@ -556,7 +577,9 @@ def eliminar_prestamo(
     current_user = Depends(
         require_roles([
             "admin",
-            "uniformes"
+            "uniformes",
+            
+            
         ])
     )
 ):

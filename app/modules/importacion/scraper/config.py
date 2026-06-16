@@ -32,13 +32,9 @@ DB_PASSWORD = os.getenv("DB_PASSWORD", "")
 ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY", "")
 
 # ---------------------------------------------------------------------------
-# Playwright / Chromium
+# Configuración del Scraper
 # ---------------------------------------------------------------------------
-HEADLESS          = os.getenv("HEADLESS", "True").lower() in ("true", "1", "yes")
-PAGE_TIMEOUT      = int(os.getenv("PAGE_TIMEOUT", "30"))      # segundos
-ELEMENT_TIMEOUT   = int(os.getenv("ELEMENT_TIMEOUT", "20"))   # segundos
 DOWNLOAD_DIR      = os.path.join(os.path.dirname(__file__), "..", "downloads")
-DOWNLOAD_TIMEOUT  = int(os.getenv("DOWNLOAD_TIMEOUT", "60"))  # segundos
 
 # ---------------------------------------------------------------------------
 # ETL

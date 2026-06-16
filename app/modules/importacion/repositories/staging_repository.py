@@ -37,7 +37,9 @@ class StagingRepository:
             nombre=datos.get("nombre"),
             grado=datos.get("grado"),
             curso=datos.get("curso"),
-            jornada=datos.get("jornada")
+            jornada=datos.get("jornada"),
+            observaciones=datos.get("observaciones"),
+            estado_validacion="Pendiente"
         )
         self.db.add(st)
         self.db.commit()

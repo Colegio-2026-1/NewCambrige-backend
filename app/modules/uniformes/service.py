@@ -240,6 +240,11 @@ def registrar_prestamo(db: Session, data: dict, usuario: str):
     # STOCK
     if not objeto or objeto.cantidad_disponible < data["cantidad_prestada"]:
         return None
+    
+    # VALIDAR TALLA
+    if objeto.tipo == "vestimenta":
+        if data["talla"] != objeto.talla:
+            return "talla_invalida"
 
     # DESCONTAR
     objeto.cantidad_disponible -= data["cantidad_prestada"]
@@ -253,7 +258,7 @@ def registrar_prestamo(db: Session, data: dict, usuario: str):
         fecha_prestamo=datetime.now(),
         estado_prestamo="prestado",
         estado_entrega=data["estado"].lower(),
-        
+        estado_devolucion=None
     )
 
     db.add(prestamo)
@@ -304,7 +309,7 @@ def devolver_prestamo(db: Session, prestamo_id: int, data: dict = None,usuario: 
         objeto.cantidad_disponible += prestamo.cantidad_prestada
 
     # ACTUALIZAR
-    prestamo.estado_entrega = estado_devolucion
+    prestamo.estado_devolucion = estado_devolucion
     prestamo.estado_prestamo = "devuelto"
     prestamo.fecha_devolucion = datetime.today()
     prestamo.observacion = data.get("observacion")
@@ -409,7 +414,11 @@ def get_asignaciones(db: Session, id_usuario: int, roles: list):
                 prestamo.talla if prestamo else "",
 
             "estado_entrega":
-                prestamo.estado_entrega if prestamo else ""
+                prestamo.estado_entrega if prestamo else "",
+            
+
+            "estado_devolucion":
+                prestamo.estado_devolucion if prestamo else "",
         })
         
 
@@ -473,7 +482,8 @@ def get_historial_devoluciones(db: Session, id_usuario: int, roles: list):
                 "prenda": objeto.nombre if objeto else "—",
                 "fecha_entrega": prestamo.fecha_prestamo,
                 "fecha_devolucion": prestamo.fecha_devolucion,
-                "estado_final": prestamo.estado_entrega,
+                "estado_entrega": prestamo.estado_entrega,
+                "estado_devolucion": prestamo.estado_devolucion,
                 "talla": prestamo.talla
             })
 

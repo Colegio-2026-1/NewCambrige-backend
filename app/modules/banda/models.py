@@ -9,23 +9,16 @@ class Categoria(Base):
     id_categoria = Column(Integer, primary_key=True, index=True)
     nombre = Column(String(100), nullable=False)
 
-class Ubicacion(Base):
-    __tablename__ = "ubicacion"
-    id_ubicacion = Column(Integer, primary_key=True, index=True)
-    nombre = Column(String(100), nullable=False)
-
 class InventarioInstrumento(Base):
     __tablename__ = "inventario_instrumento"
     id_instrumento = Column(Integer, primary_key=True, index=True)
     nombre = Column(String(100), nullable=False)
     id_categoria = Column(Integer, ForeignKey("categoria.id_categoria"))
-    id_ubicacion = Column(Integer, ForeignKey("ubicacion.id_ubicacion"))
     cantidad_total = Column(Integer, nullable=False, default=1)
     cantidad_disponible = Column(Integer, nullable=False, default=1)
     estado = Column(String(50), nullable=False, default="Activo")
     
     categoria = relationship("Categoria")
-    ubicacion = relationship("Ubicacion")
 
 class PrestamoInstrumento(Base):
     __tablename__ = "prestamo_instrumento"

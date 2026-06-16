@@ -51,6 +51,7 @@ zopfli==0.4.1
 fpdf2==2.8.7
 
 # Importacion
-playwright>=1.40.0
 pandas>=2.2.0
 pdfplumber>=0.10.3
+requests>=2.31.0
+beautifulsoup4>=4.12.0

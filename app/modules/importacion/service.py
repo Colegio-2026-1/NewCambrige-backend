@@ -6,8 +6,6 @@ from app.core.security import desencriptar_texto
 from app.modules.importacion.repositories.staging_repository import StagingRepository
 from app.modules.importacion.schemas import CargaMasivaRequest, CargaIndividualRequest
 from app.modules.secretaria.models import CredencialesLogin
-from playwright.sync_api import sync_playwright
-from app.modules.importacion.scraper.driver_setup import crear_driver
 from app.modules.importacion.scraper.autenticacion import autenticar
 from app.modules.importacion.scraper.navegacion import navegar_y_generar_listado, navegar_pagina2_y_descargar_pdfs, navegar_y_descargar_docentes
 from app.modules.importacion.scraper.extraccion import extraer_estudiantes, extraer_docentes, extraer_titulares_de_pdfs
@@ -94,23 +92,24 @@ class ImportacionService:
             raise ValueError("No hay credenciales configuradas en la base de datos para WebColegios. Por favor configúrelas primero.")
         return credencial
 
-    def _procesar_estudiantes(self, ejecucion_id, context, page, url, usuario, password):
+    def _procesar_estudiantes(self, ejecucion_id, url, usuario, password):
         reg_est = 0
         errores = 0
         
         logger.info("INICIO autenticar (estudiantes)")
-        if not autenticar(page, url=url, usuario=usuario, password=password, tipo_usuario="Administrativo"):
+        session = autenticar(url=url, usuario=usuario, password=password, tipo_usuario="Administrativo")
+        if not session:
             raise Exception("Fallo la autenticacion en WebColegios")
         logger.info("FIN autenticar")
 
         logger.info("INICIO navegar_y_generar_listado")
-        page_estudiantes = navegar_y_generar_listado(context, page, tipo_datos="Estudiantes")
+        ruta_estudiantes_pdf = navegar_y_generar_listado(session, url, tipo_datos="Estudiantes")
         logger.info("FIN navegar_y_generar_listado")
-        if not page_estudiantes:
+        if not ruta_estudiantes_pdf:
             raise Exception("No se pudo obtener el listado de estudiantes")
         
         logger.info("INICIO extraer_estudiantes")
-        estudiantes_extraidos = extraer_estudiantes(page_estudiantes)
+        estudiantes_extraidos = extraer_estudiantes(ruta_estudiantes_pdf)
         logger.info("FIN extraer_estudiantes")
         
         logger.info("INICIO insercion staging_estudiantes")
@@ -123,38 +122,34 @@ class ImportacionService:
                 self.repo.registrar_error(ejecucion_id, "estudiante", f"{type(e).__name__}: {str(e)}\n{traceback.format_exc()}", est.get("documento", ""))
         logger.info("FIN insercion staging_estudiantes")
 
-        page_estudiantes.close()
         return reg_est, errores
 
-    def _procesar_docentes(self, ejecucion_id, context, page, url, usuario, password):
+    def _procesar_docentes(self, ejecucion_id, url, usuario, password):
         reg_doc = 0
         errores = 0
 
-        # Re-autenticar para la FASE B y evitar bloqueo de sesión (Acceso Denegado)
-        logger.info("INICIO re-autenticar para FASE B (Titulares)")
-        context.clear_cookies()
-        if not autenticar(page, url=url, usuario=usuario, password=password, tipo_usuario="Administrativo"):
+        logger.info("INICIO autenticar para FASE B (Titulares)")
+        session = autenticar(url=url, usuario=usuario, password=password, tipo_usuario="Administrativo")
+        if not session:
             raise Exception("Fallo la autenticacion en WebColegios para FASE B")
-        logger.info("FIN re-autenticar para FASE B")
+        logger.info("FIN autenticar para FASE B")
         
         logger.info("INICIO navegar_pagina2_y_descargar_pdfs")
-        rutas_titulares = navegar_pagina2_y_descargar_pdfs(context, page)
+        rutas_titulares = navegar_pagina2_y_descargar_pdfs(session, url)
         logger.info("FIN navegar_pagina2_y_descargar_pdfs")
         
         logger.info("INICIO extraer_titulares_de_pdfs")
         titulares = extraer_titulares_de_pdfs(rutas_titulares)
         logger.info("FIN extraer_titulares_de_pdfs")
 
-
-
         logger.info("INICIO navegar_y_descargar_docentes")
-        ruta_docentes = navegar_y_descargar_docentes(page)
+        ruta_docentes = navegar_y_descargar_docentes(session, url)
         logger.info("FIN navegar_y_descargar_docentes")
         if not ruta_docentes:
             raise Exception("No se pudo descargar listado de docentes")
 
         logger.info("INICIO extraer_docentes")
-        docentes_extraidos = extraer_docentes(page=None, titulares=titulares)
+        docentes_extraidos = extraer_docentes(pdf_path=ruta_docentes, titulares=titulares)
         logger.info("FIN extraer_docentes")
         
         logger.info("INICIO insercion staging_docentes")
@@ -181,20 +176,15 @@ class ImportacionService:
         errores = 0
 
         try:
-            with sync_playwright() as p:
-                browser, context, page = crear_driver(p)
-                try:
-                    r_est, err = self._procesar_estudiantes(ejecucion.id, context, page, credencial.url, credencial.nombre_usuario, desencriptar_texto(credencial.password_hash))
-                    reg_est += r_est
-                    errores += err
-                    if r_est > 0:
-                        SalonResolverService.procesar_staging_estudiantes(self.repo.db, ejecucion.id)
-                except Exception as ex_inner:
-                    logger.error(f"EXCEPCION INTERNA CAPTURADA: {type(ex_inner).__name__} - {str(ex_inner)}\n{traceback.format_exc()}")
-                    raise ex_inner
-                finally:
-                    context.close()
-                    browser.close()
+            try:
+                r_est, err = self._procesar_estudiantes(ejecucion.id, credencial.url, credencial.nombre_usuario, desencriptar_texto(credencial.password_hash))
+                reg_est += r_est
+                errores += err
+                if r_est > 0:
+                    SalonResolverService.procesar_staging_estudiantes(self.repo.db, ejecucion.id)
+            except Exception as ex_inner:
+                logger.error(f"EXCEPCION INTERNA CAPTURADA: {type(ex_inner).__name__} - {str(ex_inner)}\n{traceback.format_exc()}")
+                raise ex_inner
 
             estado_final = "completado" if errores == 0 else "completado_con_errores"
         except Exception as ex:
@@ -229,18 +219,13 @@ class ImportacionService:
         errores = 0
 
         try:
-            with sync_playwright() as p:
-                browser, context, page = crear_driver(p)
-                try:
-                    r_doc, err = self._procesar_docentes(ejecucion.id, context, page, credencial.url, credencial.nombre_usuario, desencriptar_texto(credencial.password_hash))
-                    reg_doc += r_doc
-                    errores += err
-                except Exception as ex_inner:
-                    logger.error(f"EXCEPCION INTERNA CAPTURADA: {type(ex_inner).__name__} - {str(ex_inner)}\n{traceback.format_exc()}")
-                    raise ex_inner
-                finally:
-                    context.close()
-                    browser.close()
+            try:
+                r_doc, err = self._procesar_docentes(ejecucion.id, credencial.url, credencial.nombre_usuario, desencriptar_texto(credencial.password_hash))
+                reg_doc += r_doc
+                errores += err
+            except Exception as ex_inner:
+                logger.error(f"EXCEPCION INTERNA CAPTURADA: {type(ex_inner).__name__} - {str(ex_inner)}\n{traceback.format_exc()}")
+                raise ex_inner
 
             estado_final = "completado" if errores == 0 else "completado_con_errores"
         except Exception as ex:
@@ -272,27 +257,22 @@ class ImportacionService:
         errores = 0
 
         try:
-            with sync_playwright() as p:
-                browser, context, page = crear_driver(p)
-                try:
-                    # Estudiantes
-                    r_est, err1 = self._procesar_estudiantes(ejecucion.id, context, page, credencial.url, credencial.nombre_usuario, credencial.password_hash)
-                    reg_est += r_est
-                    errores += err1
-                    if r_est > 0:
-                        SalonResolverService.procesar_staging_estudiantes(self.repo.db, ejecucion.id)
+            try:
+                # Estudiantes
+                r_est, err1 = self._procesar_estudiantes(ejecucion.id, credencial.url, credencial.nombre_usuario, desencriptar_texto(credencial.password_hash))
+                reg_est += r_est
+                errores += err1
+                if r_est > 0:
+                    SalonResolverService.procesar_staging_estudiantes(self.repo.db, ejecucion.id)
 
-                    # Docentes
-                    r_doc, err2 = self._procesar_docentes(ejecucion.id, context, page, credencial.url, credencial.nombre_usuario, credencial.password_hash)
-                    reg_doc += r_doc
-                    errores += err2
+                # Docentes
+                r_doc, err2 = self._procesar_docentes(ejecucion.id, credencial.url, credencial.nombre_usuario, desencriptar_texto(credencial.password_hash))
+                reg_doc += r_doc
+                errores += err2
 
-                except Exception as ex_inner:
-                    print(f"EXCEPCION INTERNA CAPTURADA: {type(ex_inner).__name__} - {str(ex_inner)}\n{traceback.format_exc()}", flush=True)
-                    raise ex_inner
-                finally:
-                    context.close()
-                    browser.close()
+            except Exception as ex_inner:
+                print(f"EXCEPCION INTERNA CAPTURADA: {type(ex_inner).__name__} - {str(ex_inner)}\n{traceback.format_exc()}", flush=True)
+                raise ex_inner
 
             estado_final = "completado" if errores == 0 else "completado_con_errores"
         except Exception as ex:
@@ -579,7 +559,7 @@ class ImportacionService:
                 ejecucion.estado = "cancelado"
                 
             self.repo.db.commit()
-            return {"mensaje": f"Sincronización cancelada. Registros de {tipo} truncados."}
+            return {"mensaje": f"Importación cancelada exitosamente. Se han descartado los registros temporales de {tipo}."}
         except Exception as e:
             self.repo.db.rollback()
             raise Exception(f"Error al cancelar sincronización: {str(e)}")

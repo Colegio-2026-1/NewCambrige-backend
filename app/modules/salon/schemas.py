@@ -49,7 +49,7 @@ class PruebaCreate(BaseModel):
     id_estudiante: int
     id_tipo_prueba: int
     estado: Optional[str] = "Pendiente"
-
+    fecha_pago: Optional[date] = None
 
 # ======================
 # 🪑 PUPITRES
@@ -90,9 +90,10 @@ class LibroResponse(BaseModel):
 class LibroCreate(BaseModel):
     nombre: str
     autor: str
+    edicion : str
     id_salon: Optional[int] = None
     disponible: Optional[bool] = True
-
+    estado_fisico: Optional[str] = None
 
 class LibroUpdate(BaseModel):
     nombre: Optional[str] = None

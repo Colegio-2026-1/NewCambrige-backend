@@ -12,7 +12,7 @@ from app.modules.importacion.schemas import (
     CredencialesUpdate
 )
 from app.modules.importacion.service import ImportacionService
-from app.modules.auth.deps import require_roles
+from app.modules.auth.deps import get_current_user, require_roles
 from app.modules.usuarios.models import Usuario
 from app.modules.secretaria.models import CredencialesLogin
 from app.core.security import encriptar_texto
@@ -124,7 +124,7 @@ def sincronizar_docentes(
 ):
     return service.sincronizar_docentes(ejecucion_id=request.ejecucion_id)
 
-@router.delete("/scraping/cancelar/{ejecucion_id}", summary="Cancela la sincronización y purga staging")
+@router.delete("/scraping/cancelar/{ejecucion_id}", summary="Cancela la importación y limpia los datos temporales")
 def cancelar_scraping(
     ejecucion_id: int,
     tipo: str,

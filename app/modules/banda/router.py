@@ -7,7 +7,6 @@ from app.core.database import get_db
 from app.modules.banda import service
 from app.modules.banda.schemas import (
     CategoriaResponse, CategoriaCreate, CategoriaUpdate, DevolucionCreate,
-    UbicacionResponse, UbicacionCreate, UbicacionUpdate,
     InstrumentoResponse, InstrumentoCreate, InstrumentoUpdate,
     PrestamoInstrumentoResponse, PrestamoInstrumentoCreate, PrestamoInstrumentoUpdate,
     InstrumentoDisponibleResponse, PrestamoActivoResponse, AuditoriaBandaResponse
@@ -48,27 +47,6 @@ def eliminar_categoria(categoria_id: int, db: Session = Depends(get_db), current
     if not service.delete_categoria(db, categoria_id):
         raise HTTPException(status_code=404, detail="Categoría no encontrada")
 
-# ============ UBICACIONES ============
-@router.get("/ubicaciones", response_model=List[UbicacionResponse])
-def listar_ubicaciones(skip: int = Query(0, ge=0), limit: int = Query(100, ge=1, le=500), db: Session = Depends(get_db), current_user = Depends(require_roles(["admin", "banda", "secretaria"]))):
-    return service.get_ubicaciones_all(db, skip, limit)
-
-@router.post("/ubicaciones", response_model=UbicacionResponse, status_code=status.HTTP_201_CREATED)
-def crear_ubicacion(data: UbicacionCreate, db: Session = Depends(get_db), current_user = Depends(require_roles(["admin", "banda"]))):
-    return service.create_ubicacion(db, data.model_dump())
-
-@router.put("/ubicaciones/{ubicacion_id}", response_model=UbicacionResponse)
-def actualizar_ubicacion(ubicacion_id: int, data: UbicacionUpdate, db: Session = Depends(get_db), current_user = Depends(require_roles(["admin", "banda"]))):
-    ubicacion = service.update_ubicacion(db, ubicacion_id, data.model_dump(exclude_unset=True))
-    if not ubicacion:
-        raise HTTPException(status_code=404, detail="Ubicación no encontrada")
-    return ubicacion
-
-@router.delete("/ubicaciones/{ubicacion_id}", status_code=status.HTTP_204_NO_CONTENT)
-def eliminar_ubicacion(ubicacion_id: int, db: Session = Depends(get_db), current_user = Depends(require_roles(["admin"]))):
-    if not service.delete_ubicacion(db, ubicacion_id):
-        raise HTTPException(status_code=404, detail="Ubicación no encontrada")
-
 # ============ INSTRUMENTOS ============
 @router.get("/instrumentos", response_model=List[InstrumentoResponse])
 def listar_instrumentos(
@@ -81,14 +59,13 @@ def listar_instrumentos(
     for i in instrumentos:
         resultado.append({
             "id_instrumento": i.id_instrumento,
+            "codigo":i.id_instrumento,
             "nombre": i.nombre,
             "id_categoria": i.id_categoria,
-            "id_ubicacion": i.id_ubicacion,
             "cantidad_total": i.cantidad_total,
             "cantidad_disponible": i.cantidad_disponible,
             "estado": i.estado,
-            "categoria_nombre": i.categoria.nombre if i.categoria else None,
-            "ubicacion_nombre": i.ubicacion.nombre if i.ubicacion else None
+            "categoria_nombre": i.categoria.nombre if i.categoria else None
         })
     return resultado
 
@@ -102,7 +79,6 @@ def instrumentos_disponibles(db: Session = Depends(get_db), current_user = Depen
             "nombre": i.nombre,
             "cantidad_disponible": i.cantidad_disponible,
             "categoria": i.categoria.nombre if i.categoria else None,
-            "ubicacion": i.ubicacion.nombre if i.ubicacion else None
         }
         for i in instrumentos
     ]
@@ -114,15 +90,13 @@ def obtener_instrumento(instrumento_id: int, db: Session = Depends(get_db), curr
         raise HTTPException(status_code=404, detail="Instrumento no encontrado")
     return {
         "id_instrumento": instrumento.id_instrumento,
-        "codigo": instrumento.id_instrumento, # MAPEADO
+        "codigo": instrumento.id_instrumento, 
         "nombre": instrumento.nombre,
         "id_categoria": instrumento.id_categoria,
-        "id_ubicacion": instrumento.id_ubicacion,
         "cantidad_total": instrumento.cantidad_total,
         "cantidad_disponible": instrumento.cantidad_disponible,
         "estado": instrumento.estado,
         "categoria_nombre": instrumento.categoria.nombre if instrumento.categoria else None,
-        "ubicacion_nombre": instrumento.ubicacion.nombre if instrumento.ubicacion else None
     }
     
 @router.post("/instrumentos", response_model=InstrumentoResponse, status_code=status.HTTP_201_CREATED)
@@ -157,7 +131,8 @@ def listar_prestamos(
     solo_activos: bool = Query(False), estudiante_id: Optional[int] = Query(None),
     db: Session = Depends(get_db), current_user = Depends(require_roles(["admin", "banda", "secretaria"]))
 ):
-    return service.get_prestamos_all(db, skip, limit, solo_activos, estudiante_id)
+    prestamos_dict = service.get_prestamos_all(db, skip, limit, solo_activos, estudiante_id)
+    return prestamos_dict
 
 @router.get("/prestamos/activos", response_model=List[PrestamoActivoResponse])
 def prestamos_activos(db: Session = Depends(get_db), current_user = Depends(require_roles(["admin", "banda", "secretaria"]))):

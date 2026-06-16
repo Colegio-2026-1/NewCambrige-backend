@@ -62,54 +62,71 @@ def delete(db: Session, salon_id: int) -> bool:
 # ======================
 # 🧪 PRUEBAS
 # ======================
-def get_all_pruebas(db: Session) -> list:
-    pruebas = (
-        db.query(Prueba)
-        .options(
-            joinedload(Prueba.estudiante).joinedload(Estudiante.salon),
-            joinedload(Prueba.tipo_prueba)
-        )
-        .all()
+def get_all_pruebas(db: Session, current_user) -> list:
+
+    query = (
+        db.query(Estudiante)
+        .options(joinedload(Estudiante.salon))
     )
+
+    if "titular" in current_user.rol_nombres:
+        query = query.join(Salon).filter(
+            Salon.id_usuario == current_user.id_usuario
+        )
+
+    estudiantes = query.all()
+
+    tipos_prueba = db.query(TipoPrueba).all()
 
     resultado = []
 
-    for p in pruebas:
-        e = p.estudiante
-        salon = e.salon if e else None
+    for e in estudiantes:
+        salon = e.salon
 
-        resultado.append({
-            "id": p.id_prueba,
-            "id_prueba": p.id_prueba,
-            "codigo": e.documento if e else None,
-            "nombre": e.nombre if e else None,
-            "grado": str(salon.grado) if salon else None,
-            "grupo": str(salon.grupo) if salon else None,
-            "tipo_prueba": (
-                p.tipo_prueba.nombre
-                if p.tipo_prueba else None
-            ),
-            "estado": p.estado,
+        for tipo in tipos_prueba:
+            prueba = db.query(Prueba).filter(
+                Prueba.id_estudiante == e.id_estudiante,
+                Prueba.id_tipo_prueba == tipo.id_tipo_prueba
+            ).first()
 
-            # SOLO mostrar fecha si está pagado
-            "fecha_pago": (
-                p.fecha_pago.strftime("%d/%m/%Y")
-                if p.estado == "visto" and p.fecha_pago
-                else None
-            ),
-        })
+            resultado.append({
+                "id_prueba": prueba.id_prueba if prueba else None,
+                "id_estudiante": e.id_estudiante,
+                "codigo": e.documento,
+                "nombre": e.nombre,
+                "grado": str(salon.grado) if salon else None,
+                "grupo": str(salon.grupo) if salon else None,
+                "tipo_prueba": tipo.nombre,
+                "id_tipo_prueba": tipo.id_tipo_prueba,
+                "estado": prueba.estado if prueba else "pendiente",
+                "fecha_pago": (
+                    prueba.fecha_pago.strftime("%d/%m/%Y")
+                    if prueba and prueba.estado == "visto" and prueba.fecha_pago
+                    else None
+                ),
+            })
 
     return resultado
 
-
-def create_prueba(db: Session, data: dict) -> Prueba:
+def create_prueba(db: Session, data: dict) -> dict:
     nueva = Prueba(**data)
-
     db.add(nueva)
     db.commit()
     db.refresh(nueva)
 
-    return nueva
+    tipo = db.query(TipoPrueba).filter(TipoPrueba.id_tipo_prueba == nueva.id_tipo_prueba).first()
+
+    return {
+        "id_prueba": nueva.id_prueba,
+        "id_estudiante": nueva.id_estudiante,
+        "id_tipo_prueba": nueva.id_tipo_prueba,
+        "tipo_prueba": tipo.nombre if tipo else None,
+        "estado": nueva.estado,
+        "fecha_pago": (
+            nueva.fecha_pago.strftime("%d/%m/%Y")
+            if nueva.estado == "visto" and nueva.fecha_pago else None
+        ),
+    }
 
 
 def update_estado_prueba(
@@ -139,32 +156,38 @@ def update_estado_prueba(
 # ======================
 # 🪑 PUPITRES
 # ======================
-def get_all_pupitres(db: Session) -> list:
-    pupitres = (
-        db.query(Pupitre)
-        .options(
-            joinedload(Pupitre.estudiante).joinedload(Estudiante.salon),
-        )
-        .all()
+def get_all_pupitres(db: Session, current_user) -> list:
+
+    query = (
+        db.query(Estudiante, Pupitre)
+        .outerjoin(Pupitre, Pupitre.id_estudiante == Estudiante.id_estudiante)
+        .join(Salon, Estudiante.id_salon == Salon.id_salon)
+        .options(joinedload(Estudiante.salon))
     )
+
+    if "titular" in current_user.rol_nombres:
+        query = query.filter(
+            Salon.id_usuario == current_user.id_usuario
+        )
+
+    resultado_query = query.all()
 
     resultado = []
 
-    for p in pupitres:
-        e = p.estudiante
-        salon = e.salon if e else None
+    for e, p in resultado_query:
+        salon = e.salon
 
         resultado.append({
-            "id_mantenimiento": p.id_mantenimiento,
-            "id_estudiante": p.id_estudiante,
-            "codigo": e.documento if e else None,
-            "nombre": e.nombre if e else None,
+            "id_mantenimiento": p.id_mantenimiento if p else None,
+            "id_estudiante": e.id_estudiante,
+            "codigo": e.documento,
+            "nombre": e.nombre,
             "grado": str(salon.grado) if salon else None,
             "grupo": str(salon.grupo) if salon else None,
-            "estado": p.estado,
+            "estado": p.estado if p else "pendiente",
             "fecha_pago": (
                 p.fecha_pago.strftime("%d/%m/%Y")
-                if p.estado == "visto" and p.fecha_pago  #  Cambio: "visto" en lugar de "PAGADO"
+                if p and p.estado == "visto" and p.fecha_pago
                 else None
             ),
         })
@@ -189,12 +212,33 @@ def update_pupitre(db: Session, pupitre_id: int, estado: str, fecha_pago: Option
     db.refresh(pupitre)
     return pupitre
 
-
+def create_pupitre(db: Session, id_estudiante: int, estado: str, fecha_pago=None):
+    nuevo = Pupitre(
+        id_estudiante=id_estudiante,
+        estado=estado,
+        fecha_pago=fecha_pago
+    )
+    db.add(nuevo)
+    db.commit()
+    db.refresh(nuevo)
+    return nuevo
 # ======================
 # 📚 BIBLIOTECA
 # ======================
-def get_all_libros(db: Session):
-    libros = db.query(InventarioLibro).all()
+def get_all_libros(db: Session, current_user):
+
+    query = db.query(InventarioLibro)
+
+    if "titular" in current_user.rol_nombres:
+        query = query.filter(
+            InventarioLibro.id_salon.in_(
+                db.query(Salon.id_salon).filter(
+                    Salon.id_usuario == current_user.id_usuario
+                )
+            )
+        )
+
+    libros = query.all()
 
     return [
         {
@@ -210,19 +254,29 @@ def get_all_libros(db: Session):
     ]
 
 
-def get_all_prestamos(db: Session) -> list:
-    prestamos = (
+def get_all_prestamos(db: Session, current_user) -> list:
+
+    query = (
         db.query(PrestamoLibro)
+        .join(Estudiante)
+        .join(Salon)
         .options(
             joinedload(PrestamoLibro.estudiante).joinedload(Estudiante.salon),
             joinedload(PrestamoLibro.libro)
         )
-        .all()
     )
+
+    if "titular" in current_user.rol_nombres:
+        query = query.filter(
+            Salon.id_usuario == current_user.id_usuario
+        )
+
+    prestamos = query.all()
 
     resultado = []
 
     for p in prestamos:
+
         e = p.estudiante
         salon = e.salon if e else None
 
@@ -239,7 +293,6 @@ def get_all_prestamos(db: Session) -> list:
         })
 
     return resultado
-
 
 def create_libro(db: Session, data: dict) -> InventarioLibro:
     libro = InventarioLibro(**data)

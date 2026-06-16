@@ -180,8 +180,10 @@ def get_tipos_prueba_por_grado(db: Session, grado: int):
 def create_tipo_prueba(db: Session, datos_in: dict):
     nuevo_min = datos_in["grado_min"]
     nuevo_max = datos_in["grado_max"]
+    nuevo_nombre = datos_in["nombre"]
 
     solapamiento = db.query(TipoPrueba).filter(
+        TipoPrueba.nombre == nuevo_nombre,
         TipoPrueba.grado_min <= nuevo_max,
         TipoPrueba.grado_max >= nuevo_min
     ).first()
@@ -193,7 +195,7 @@ def create_tipo_prueba(db: Session, datos_in: dict):
         )
 
     nueva_prueba = TipoPrueba(
-        nombre=datos_in["nombre"],
+        nombre=nuevo_nombre,
         grado_min=nuevo_min,
         grado_max=nuevo_max,
         descripcion=datos_in.get("descripcion")
@@ -209,11 +211,13 @@ def update_tipo_prueba(db: Session, id_tipo_prueba: int, datos_in: dict):
     if not prueba_obj:
         return None
 
-    nuevo_min = datos_in["grado_min"]
-    nuevo_max = datos_in["grado_max"]
+    nuevo_min = datos_in.get("grado_min", prueba_obj.grado_min)
+    nuevo_max = datos_in.get("grado_max", prueba_obj.grado_max)
+    nuevo_nombre = datos_in.get("nombre", prueba_obj.nombre)
 
     solapamiento = db.query(TipoPrueba).filter(
         TipoPrueba.id_tipo_prueba != id_tipo_prueba, 
+        TipoPrueba.nombre == nuevo_nombre,
         TipoPrueba.grado_min <= nuevo_max,
         TipoPrueba.grado_max >= nuevo_min
     ).first()
@@ -221,9 +225,10 @@ def update_tipo_prueba(db: Session, id_tipo_prueba: int, datos_in: dict):
     if solapamiento:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="¡Rango Solapado detectado!"
+            detail="¡Rango Solapado detectado con el mismo nombre!"
         )
 
+    prueba_obj.nombre = nuevo_nombre
     prueba_obj.grado_min = nuevo_min
     prueba_obj.grado_max = nuevo_max
 

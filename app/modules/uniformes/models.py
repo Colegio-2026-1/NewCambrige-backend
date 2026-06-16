@@ -51,6 +51,7 @@ class PrestamoObjeto(Base):
         default="prestado")
 
     estado_entrega = Column(String(20), nullable=True)
+    estado_devolucion = Column(String(20), nullable=True)
     observacion = Column(String, nullable=True)
     talla = Column(String(10), nullable=True)
     cantidad_prestada = Column(Integer, default=1)

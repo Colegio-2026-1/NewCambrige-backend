@@ -5,11 +5,11 @@ from datetime import date, datetime
 
 from app.shared.models import Auditoria
 from app.modules.banda.models import (
-    Categoria, Ubicacion, InventarioInstrumento, PrestamoInstrumento
+    Categoria, InventarioInstrumento, PrestamoInstrumento
 )
 from app.modules.estudiantes.models import Estudiante
 
-# ============ AUDITORÍA (HELPER) ============
+# ============ AUDITORÍA ============
 def registrar_auditoria_central(db: Session, current_user, tabla: str, id_reg: int, accion_msg: str):
     """
     Registra en la tabla 'auditoria' central del proyecto.
@@ -62,38 +62,12 @@ def delete_categoria(db: Session, categoria_id: int) -> bool:
     db.commit()
     return True
 
-# ============ UBICACIONES ============
-def get_ubicaciones_all(db: Session, skip: int = 0, limit: int = 100) -> List[Ubicacion]:
-    return db.query(Ubicacion).offset(skip).limit(limit).all()
+#======= estudiantes salon ========
 
-def get_ubicacion_by_id(db: Session, ubicacion_id: int) -> Optional[Ubicacion]:
-    return db.query(Ubicacion).filter(Ubicacion.id_ubicacion == ubicacion_id).first()
-
-def create_ubicacion(db: Session, data: dict) -> Ubicacion:
-    nueva = Ubicacion(**data)
-    db.add(nueva)
-    db.commit()
-    db.refresh(nueva)
-    return nueva
-
-def update_ubicacion(db: Session, ubicacion_id: int, data: dict) -> Optional[Ubicacion]:
-    ubicacion = get_ubicacion_by_id(db, ubicacion_id)
-    if not ubicacion:
-        return None
-    for key, value in data.items():
-        if value is not None:
-            setattr(ubicacion, key, value)
-    db.commit()
-    db.refresh(ubicacion)
-    return ubicacion
-
-def delete_ubicacion(db: Session, ubicacion_id: int) -> bool:
-    ubicacion = get_ubicacion_by_id(db, ubicacion_id)
-    if not ubicacion:
-        return False
-    db.delete(ubicacion)
-    db.commit()
-    return True
+def get_all(db: Session, skip: int = 0, limit: int = 100):
+    return db.query(Estudiante).options(
+        joinedload(Estudiante.salon)
+    ).offset(skip).limit(limit).all()
 
 # ============ INSTRUMENTOS ============
 def get_instrumentos_all(
@@ -105,7 +79,6 @@ def get_instrumentos_all(
 ) -> List[InventarioInstrumento]:
     query = db.query(InventarioInstrumento).options(
         joinedload(InventarioInstrumento.categoria),
-        joinedload(InventarioInstrumento.ubicacion)
     )
     
     if solo_disponibles:
@@ -119,7 +92,6 @@ def get_instrumentos_all(
 def get_instrumento_by_id(db: Session, instrumento_id: int) -> Optional[InventarioInstrumento]:
     return db.query(InventarioInstrumento).options(
         joinedload(InventarioInstrumento.categoria),
-        joinedload(InventarioInstrumento.ubicacion)
     ).filter(InventarioInstrumento.id_instrumento == instrumento_id).first() 
 
 def create_instrumento(db: Session, data: dict, current_user) -> InventarioInstrumento:
@@ -135,31 +107,57 @@ def create_instrumento(db: Session, data: dict, current_user) -> InventarioInstr
     db.refresh(nuevo)
     return nuevo
 
-
-# app/modules/banda/service.py
-
 def update_instrumento(db: Session, instrumento_id: int, data: dict, current_user) -> Optional[InventarioInstrumento]:
     instrumento = get_instrumento_by_id(db, instrumento_id)
     if not instrumento:
         return None
-    
-    # ── LOGICA DE NEGOCIO: REPARACIÓN EXITOSA ──
-    if "estado" in data:
-        nuevo_estado = data["estado"]
-        if nuevo_estado == "Activo" and instrumento.estado == "En mantenimiento":
-            if instrumento.cantidad_disponible < instrumento.cantidad_total:
-                instrumento.cantidad_disponible += 1
+
+    if "cantidad_total" in data and data["cantidad_total"] is not None:
+        nuevo_total = int(data["cantidad_total"])
+        prestados = (
+            instrumento.cantidad_total
+            - instrumento.cantidad_disponible
+        )
+        if nuevo_total < prestados:
+            raise ValueError(
+                f"No puede reducir la cantidad total a {nuevo_total}. "
+                f"Actualmente hay {prestados} instrumentos prestados."
+            )
+        instrumento.cantidad_disponible = (
+            nuevo_total - prestados
+        )
+        instrumento.cantidad_total = nuevo_total
         
-        elif nuevo_estado == "En mantenimiento" and instrumento.estado == "Activo":
+        if "estado" in data:
+            nuevo_estado = data["estado"]
+            if (
+                nuevo_estado == "Activo"
+                and instrumento.estado == "En mantenimiento"
+                ):
+                if instrumento.cantidad_disponible < instrumento.cantidad_total:
+                    instrumento.cantidad_disponible += 1
+        elif (
+            nuevo_estado == "En mantenimiento"
+            and instrumento.estado == "Activo"
+        ):
             if instrumento.cantidad_disponible > 0:
                 instrumento.cantidad_disponible -= 1
-
+                
     for key, value in data.items():
-        if value is not None and key not in ["id_instrumento", "id_inventario"]:
+        if key == "cantidad_total":
+            continue
+        if value is not None and key not in [
+            "id_instrumento",
+            "id_inventario"
+        ]:
             setattr(instrumento, key, value)
-            
-    registrar_auditoria_central(db, current_user, "inventario_instrumento", instrumento.id_instrumento, f"EDIT: {instrumento.nombre}")
-    
+    registrar_auditoria_central(
+        db,
+        current_user,
+        "inventario_instrumento",
+        instrumento.id_instrumento,
+        f"EDIT: {instrumento.nombre}"
+    )
     db.commit()
     db.refresh(instrumento)
     return instrumento

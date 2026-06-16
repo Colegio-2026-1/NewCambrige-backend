@@ -53,7 +53,8 @@ class PrestamoObjetoResponse(PrestamoObjetoBase):
     fecha_prestamo: Optional[datetime] = None  # Cambiado para acoplarse con datetime.now() de tu servicio
     fecha_devolucion: Optional[datetime] = None  # Cambiado a datetime por consistencia con datetime.today()
     estado_prestamo: Optional[str] = None
-    estado_entrega: str
+    estado_entrega: Optional[str] = None
+    estado_devolucion: Optional[str] = None
     observacion: Optional[str] = None
     created_at: Optional[datetime] = None  # Se vuelve opcional para prevenir fallos si el ORM no lo implementa
 
@@ -75,9 +76,9 @@ class AsignacionResponse(BaseModel):
     prenda: Optional[str] = None
     fecha_entrega: Optional[datetime] = None  # Solución al Bug: Ahora acepta datetime con hora sin romper la serialización
     estado: Optional[str] = None
-    estado_original: Optional[str] = None
-    talla: Optional[str] = None  # Se añade explícitamente ya que tu servicio lo incluye en el diccionario de salida
     estado_entrega: Optional[str] = None
+    estado_devolucion: Optional[str] = None
+    talla: Optional[str] = None  
 
     class Config:
         from_attributes = True

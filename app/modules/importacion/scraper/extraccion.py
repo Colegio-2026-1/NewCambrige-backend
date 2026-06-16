@@ -9,12 +9,10 @@ import time
 import glob
 from datetime import datetime
 from typing import List, Dict, Optional
-
-from playwright.sync_api import Page
-import pdfplumber
 import pandas as pd
+import pdfplumber
 from .logger import get_logger
-from .config import DOWNLOAD_DIR, DOWNLOAD_TIMEOUT
+from .config import DOWNLOAD_DIR
 
 logger = get_logger("extraccion")
 
@@ -41,33 +39,8 @@ def _mapear_curso(codigo: str) -> str:
 
 
 # =============================================================================
-#  EXTRACCIÓN DESDE HTML / PDF
+#  EXTRACCIÓN DESDE PDF
 # =============================================================================
-
-def extraer_desde_html(page: Page, tipo: str = "estudiantes") -> Optional[List[Dict]]:
-    logger.info(f" Extrayendo {tipo} desde HTML...")
-    try:
-        tablas = page.locator("//table")
-        count = tablas.count()
-        if count > 0:
-            texto_total = ""
-            for i in range(count):
-                texto_total += tablas.nth(i).inner_text() + "\n"
-            resultados = _parsear_texto(texto_total, tipo)
-            if resultados:
-                logger.info(f" {len(resultados)} registros extraídos desde tablas HTML")
-                return resultados
-
-        body = page.inner_text("body")
-        resultados = _parsear_texto(body, tipo)
-        if resultados:
-            logger.info(f" {len(resultados)} registros extraídos desde body HTML")
-            return resultados
-    except Exception as e:
-        logger.warning(f"️  Error leyendo HTML: {e}")
-
-    logger.warning("️  No se encontraron registros en el HTML")
-    return None
 
 
 def extraer_desde_pdf(pdf_path: str, tipo: str = "estudiantes") -> Optional[List[Dict]]:
@@ -92,71 +65,32 @@ def extraer_desde_pdf(pdf_path: str, tipo: str = "estudiantes") -> Optional[List
     return resultados or None
 
 
-def esperar_pdf_descargado() -> Optional[str]:
-    logger.info(f"⏳ Esperando PDF en: {DOWNLOAD_DIR}")
-    inicio = time.time()
-    while time.time() - inicio < DOWNLOAD_TIMEOUT:
-        pdfs = [f for f in glob.glob(os.path.join(DOWNLOAD_DIR, "*.pdf"))
-                if not f.endswith(".crdownload") and "titulares" not in f]
-        if pdfs:
-            pdf_reciente = max(pdfs, key=os.path.getmtime)
-            logger.info(f" PDF listo: {pdf_reciente}")
-            return pdf_reciente
-        time.sleep(2)
-    logger.error(" Tiempo agotado esperando PDF")
-    return None
+
 
 
 # =============================================================================
 #  ORQUESTADORES
 # =============================================================================
 
-def extraer_estudiantes(page: Page) -> List[Dict]:
-    """Extrae estudiantes desde el HTML de resultado o PDF."""
-    resultados = extraer_desde_html(page, "estudiantes")
-    if resultados:
-        return resultados
-    context = page.context
-    if context:
-        for p in context.pages:
-            resultados = extraer_desde_html(p, "estudiantes")
-            if resultados:
-                return resultados
-    pdf_path = esperar_pdf_descargado()
-    if pdf_path:
-        resultados = extraer_desde_pdf(pdf_path)
-        if resultados:
-            return resultados
-    return []
+def extraer_estudiantes(pdf_path: str) -> List[Dict]:
+    """Extrae estudiantes desde el PDF."""
+    if not pdf_path or not os.path.exists(pdf_path):
+        logger.error(f"Archivo PDF de estudiantes no encontrado: {pdf_path}")
+        return []
+        
+    resultados = extraer_desde_pdf(pdf_path, "estudiantes")
+    return resultados or []
 
 
-def extraer_docentes(page, titulares: Dict[str, Dict] = None, registros_raw: List[Dict] = None) -> List[Dict]:
+def extraer_docentes(pdf_path: str, titulares: Dict[str, Dict] = None, registros_raw: List[Dict] = None) -> List[Dict]:
     """
     Extrae docentes y los enriquece con información de titulares.
-    
-    Si `registros_raw` se provee, lo usa directamente (ya extraído del PDF).
-    En caso contrario intenta extraer desde `page` (HTML o PDF interceptado).
     """
     resultados = registros_raw or []
 
-    if not resultados:
-        ruta_impresion = os.path.join(DOWNLOAD_DIR, "docentes_listado.pdf")
-        if os.path.exists(ruta_impresion):
-            logger.info(" PDF 'docentes_listado.pdf' encontrado, extrayendo desde PDF...")
-            resultados = extraer_desde_pdf(ruta_impresion, "docentes") or []
-
-    if not resultados and page is not None:
-        resultados = extraer_desde_html(page, "docentes") or []
-        if not resultados:
-            context = getattr(page, "context", None)
-            if context:
-                for p in context.pages:
-                    resultados = extraer_desde_html(p, "docentes") or []
-                    if resultados:
-                        break
-
-    if not resultados and page is None:
-        logger.warning("️  No hay registros ni page disponible para extraer docentes")
+    if not resultados and pdf_path and os.path.exists(pdf_path):
+        logger.info(f" Extrayendo docentes desde PDF: {pdf_path}")
+        resultados = extraer_desde_pdf(pdf_path, "docentes") or []
 
     if not resultados:
         return []
@@ -295,70 +229,91 @@ def _parsear_texto(texto: str, tipo: str = "estudiantes") -> List[Dict]:
     if not texto:
         return []
 
-    def extract_header(pattern):
-        m = re.search(pattern, texto, re.IGNORECASE)
-        return m.group(1).strip() if m else ""
-
-    jornada     = extract_header(r"Jornada:\s*([^\n\r]+?)(?=\s+Grado:|$)")
-    grado_texto = extract_header(r"Grado:\s*([^\n\r]+?)(?=\s+Curso:|$)")
-    curso       = extract_header(r"Curso:\s*([^\n\r]+?)(?=\s+Sede:|$)")
-    sede        = extract_header(r"Sede:\s*([^\n\r]+)")
-    
-    # Extraer Jornada si viene embebida dentro del campo Sede
-    if not jornada and "Jornada:" in sede:
-        m_jornada = re.search(r"Jornada:\s*([a-zA-Z0-9_]+)", sede, re.IGNORECASE)
-        if m_jornada:
-            jornada = m_jornada.group(1).strip()
-        sede = re.sub(r"\s*Jornada:\s*[a-zA-Z0-9_]+", "", sede, flags=re.IGNORECASE).strip()
-        
-    titular     = extract_header(r"Titular:\s*([^\n\r]+?)(?=\s+Fecha:|$)")
-
     resultados = []
+    
+    # Estado actual (se actualiza al encontrar nuevas cabeceras)
+    current_jornada = ""
+    current_grado = ""
+    current_curso = ""
+    current_sede = ""
+    current_titular = ""
 
-    if tipo == "docentes":
-        PATRON_DOCENTE = re.compile(
-            r'^\s*(?:(\d+)\s+)?(\d{5,15})\s+([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\s]+?)\s*$',
-            re.IGNORECASE | re.MULTILINE
-        )
-        encontrados = PATRON_DOCENTE.findall(texto)
-        for match in encontrados:
-            consecutivo = match[0] if match[0] else "0"
-            documento = match[1]
-            nombre = match[2]
-            
-            nombre_limpio = _limpiar_nombre(nombre)
-            documento_limpio = documento.strip()
-            
-            if nombre_limpio and documento_limpio:
-                resultados.append({
-                    "consecutivo": int(consecutivo),
-                    "documento":   documento_limpio,
-                    "nombre":      nombre_limpio,
-                    "jornada":     jornada,
-                    "grado":       grado_texto,
-                    "curso":       curso,
-                    "sede":        sede,
-                    "titular":     titular,
-                })
-    else:
-        encontrados = PATRON_PERSONA.findall(texto)
-        for consecutivo, documento, nombre, cod_grado, cod_curso in encontrados:
-            nombre_limpio = _limpiar_nombre(nombre)
-            documento_limpio = documento.strip()
-            grado_asignado = MAPA_GRADOS.get(cod_grado, cod_grado) if cod_grado else grado_texto
-            curso_asignado = _mapear_curso(cod_curso) if cod_curso else _mapear_curso(curso)
+    # Patrones para cabeceras
+    p_jornada = re.compile(r"Jornada:\s*([^\n\r]+?)(?=\s+Grado:|$)", re.IGNORECASE)
+    p_grado   = re.compile(r"Grado:\s*([^\n\r]+?)(?=\s+Curso:|$)", re.IGNORECASE)
+    p_curso   = re.compile(r"Curso:\s*([^\n\r]+?)(?=\s+Sede:|$)", re.IGNORECASE)
+    p_sede    = re.compile(r"Sede:\s*([^\n\r]+)", re.IGNORECASE)
+    p_titular = re.compile(r"Titular:\s*([^\n\r]+?)(?=\s+Fecha:|$)", re.IGNORECASE)
 
-            if nombre_limpio and documento_limpio:
-                resultados.append({
-                    "consecutivo": int(consecutivo),
-                    "documento":   documento_limpio,
-                    "nombre":      nombre_limpio,
-                    "jornada":     jornada,
-                    "grado":       grado_asignado,
-                    "curso":       curso_asignado,
-                    "sede":        sede,
-                    "titular":     titular,
-                })
+    PATRON_DOCENTE = re.compile(r'^\s*(?:(\d+)\s+)?(\d{5,15})\s+([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\s]+?)\s*$', re.IGNORECASE)
+    PATRON_PERSONA = re.compile(r'^\s*(\d+)\s+(\d{5,15})\s+([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\s]+?)(?:\s+([A-Z0-9]{2})\s+([A-Z0-9]{2}))?\s*$', re.IGNORECASE)
+
+    for line in texto.split('\n'):
+        # 1. Actualizar estado de cabeceras
+        m_jornada = p_jornada.search(line)
+        if m_jornada: current_jornada = m_jornada.group(1).strip()
+        
+        m_grado = p_grado.search(line)
+        if m_grado: current_grado = m_grado.group(1).strip()
+        
+        m_curso = p_curso.search(line)
+        if m_curso: current_curso = m_curso.group(1).strip()
+        
+        m_sede = p_sede.search(line)
+        if m_sede:
+            sede_raw = m_sede.group(1)
+            # Extraer Jornada si viene embebida dentro del campo Sede
+            m_j_in_s = re.search(r"Jornada:\s*([a-zA-Z0-9_]+)", sede_raw, re.IGNORECASE)
+            if m_j_in_s:
+                current_jornada = m_j_in_s.group(1).strip()
+                sede_raw = re.sub(r"\s*Jornada:\s*[a-zA-Z0-9_]+", "", sede_raw, flags=re.IGNORECASE).strip()
+            current_sede = sede_raw.strip()
+            
+        m_titular = p_titular.search(line)
+        if m_titular: current_titular = m_titular.group(1).strip()
+
+        # 2. Extraer registros
+        if tipo == "docentes":
+            m_docente = PATRON_DOCENTE.match(line)
+            if m_docente:
+                consecutivo = m_docente.group(1) if m_docente.group(1) else "0"
+                documento = m_docente.group(2).strip()
+                nombre = _limpiar_nombre(m_docente.group(3))
+                if nombre and documento:
+                    resultados.append({
+                        "consecutivo": int(consecutivo),
+                        "documento":   documento,
+                        "nombre":      nombre,
+                        "jornada":     current_jornada,
+                        "grado":       current_grado,
+                        "curso":       current_curso,
+                        "sede":        current_sede,
+                        "titular":     current_titular,
+                    })
+        else:
+            m_persona = PATRON_PERSONA.match(line)
+            if m_persona:
+                consecutivo = m_persona.group(1)
+                documento = m_persona.group(2).strip()
+                nombre = _limpiar_nombre(m_persona.group(3))
+                cod_grado = m_persona.group(4)
+                cod_curso = m_persona.group(5)
+                
+                grado_asignado = MAPA_GRADOS.get(cod_grado, cod_grado) if cod_grado else current_grado
+                curso_asignado = _mapear_curso(cod_curso) if cod_curso else _mapear_curso(current_curso)
+
+                if nombre and documento:
+                    resultados.append({
+                        "consecutivo": int(consecutivo),
+                        "documento":   documento,
+                        "nombre":      nombre,
+                        "jornada":     current_jornada,
+                        "grado":       grado_asignado,
+                        "curso":       curso_asignado,
+                        "sede":        current_sede,
+                        "titular":     current_titular,
+                    })
+
     return resultados
 
 
