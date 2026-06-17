@@ -69,6 +69,7 @@ class DocenteRectoriaItem(BaseModel):
     salon: Optional[str] = None
     firmado: bool = False
     fecha_firma: Optional[datetime] = None
+    id_usuario_firmante: Optional[int] = None
 
 class DocenteRectoriaFirmaResponse(BaseModel):
     mensaje: str

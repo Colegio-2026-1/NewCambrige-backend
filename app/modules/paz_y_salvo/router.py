@@ -114,10 +114,11 @@ def obtener_sello(
 @router.get("/firma/modulo/{nombre_modulo}")
 def obtener_firma_modulo(
     nombre_modulo: str,
+    usuario_id: Optional[int] = Query(None),
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(require_roles(["admin", "rectoria"])),
 ):
-    resultado = service._get_firma_por_modulo(nombre_modulo, db)
+    resultado = service.obtener_firma_modulo(nombre_modulo, db, usuario_id)
     if "error" in resultado:
         raise HTTPException(404, resultado["error"])
     return FileResponse(resultado["ruta"], media_type="image/png")
@@ -192,7 +193,7 @@ def descargar_pdf_docente_endpoint(
 ):
     periodo_id_valido = _validar_acceso_periodo(periodo_id, current_user, db)
     try:
-        pdf_bytes = service.descargar_pdf_docente(db, docente_id, periodo_id_valido)
+        pdf_bytes = service.descargar_pdf_docente(db, docente_id, periodo_id_valido, current_user.id_usuario)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     nombre_archivo = f"paz_y_salvo_docente_{docente_id}.pdf"
@@ -202,21 +203,11 @@ def descargar_pdf_docente_endpoint(
         headers={"Content-Disposition": f"attachment; filename={nombre_archivo}"},
     )
 
-@router.get("/imagen-firma/{nombre_modulo}")
-def obtener_imagen_firma(
-    nombre_modulo: str,
-    current_user: Usuario = Depends(require_roles(["admin", "rectoria"])),
-):
-    resultado = service.obtener_firma(nombre_modulo)
-    if "error" in resultado:
-        raise HTTPException(404, resultado["error"])
-    return FileResponse(resultado["ruta"], media_type="image/png")
-
 @router.get("/descargar-pdf/estudiantes/batch")
 def descargar_pdf_estudiantes_batch_endpoint(
-    periodo_id: int = Query(...),
-    grado: str = Query(...),
-    grupo: str = Query(...),
+    periodo_id: int = Query(None),
+    grado: Optional[str] = Query(None),
+    grupo: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(require_roles(["admin", "rectoria"])),
 ):
@@ -224,9 +215,30 @@ def descargar_pdf_estudiantes_batch_endpoint(
     zip_bytes = service.descargar_pdf_estudiantes_batch(
         db, periodo_id_valido, grado, grupo
     )
-    nombre = f"paz_y_salvo_grado_{grado}_grupo_{grupo}.zip"
+    sufijo = []
+    if grado:
+        sufijo.append(f"grado_{grado}")
+    if grupo:
+        sufijo.append(f"grupo_{grupo}")
+    nombre = f"paz_y_salvo_{'_'.join(sufijo) if sufijo else 'todos'}.zip"
     return StreamingResponse(
         iter([zip_bytes]),
         media_type="application/zip",
         headers={"Content-Disposition": f"attachment; filename={nombre}"},
+    )
+
+@router.get("/descargar-pdf/docentes/batch")
+def descargar_pdf_docentes_batch_endpoint(
+    periodo_id: Optional[int] = Query(None),
+    grado: Optional[str] = Query(None),
+    grupo: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(require_roles(["admin", "rectoria"])),
+):
+    periodo_id_valido = _validar_acceso_periodo(periodo_id, current_user, db)
+    zip_bytes = service.descargar_pdf_docentes_batch(db, periodo_id_valido, grado, grupo)
+    return StreamingResponse(
+        iter([zip_bytes]),
+        media_type="application/zip",
+        headers={"Content-Disposition": "attachment; filename=paz_y_salvo_docentes.zip"},
     )
