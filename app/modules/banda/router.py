@@ -16,6 +16,23 @@ from app.shared.models import Auditoria
 
 router = APIRouter()
 
+# ============ ESTUDIANTES BANDA ============
+@router.get("/estudiantes")
+def listar_estudiantes_banda(
+    db: Session = Depends(get_db), 
+    current_user = Depends(require_roles(["admin", "banda", "secretaria"]))
+):
+    estudiantes = service.get_estudiantes_banda(db)
+    return [
+        {
+            "id_estudiante": e.id_estudiante,
+            "documento": e.documento,
+            "nombre": e.nombre,
+            "id_salon": e.id_salon
+        }
+        for e in estudiantes
+    ]
+    
 # ============ CATEGORÍAS ============
 @router.get("/categorias", response_model=List[CategoriaResponse])
 def listar_categorias(skip: int = Query(0, ge=0), limit: int = Query(100, ge=1, le=500), db: Session = Depends(get_db), current_user = Depends(require_roles(["admin", "banda", "secretaria"]))):

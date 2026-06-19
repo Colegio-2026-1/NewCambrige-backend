@@ -7,7 +7,7 @@ from app.shared.models import Auditoria
 from app.modules.banda.models import (
     Categoria, InventarioInstrumento, PrestamoInstrumento
 )
-from app.modules.estudiantes.models import Estudiante
+from app.modules.estudiantes.models import Estudiante, EstudianteBanda
 
 # ============ AUDITORÍA ============
 def registrar_auditoria_central(db: Session, current_user, tabla: str, id_reg: int, accion_msg: str):
@@ -68,6 +68,17 @@ def get_all(db: Session, skip: int = 0, limit: int = 100):
     return db.query(Estudiante).options(
         joinedload(Estudiante.salon)
     ).offset(skip).limit(limit).all()
+    
+def get_estudiantes_banda(db: Session):
+    """
+    Obtiene todos los estudiantes que pertenecen a la banda y están activos.
+    """
+    return (
+        db.query(Estudiante)
+        .join(EstudianteBanda, Estudiante.id_estudiante == EstudianteBanda.id_estudiante)
+        .filter(EstudianteBanda.activo == True)
+        .all()
+    )
 
 # ============ INSTRUMENTOS ============
 def get_instrumentos_all(
